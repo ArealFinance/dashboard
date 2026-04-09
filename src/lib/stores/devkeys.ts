@@ -1,0 +1,228 @@
+import { writable, derived, get } from 'svelte/store';
+import { Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { connection } from './network';
+import { browser } from '$app/environment';
+import bs58 from 'bs58';
+
+const STORAGE_KEY = 'areal_dev_keypairs';
+
+/**
+ * Stored keypair (serializable to localStorage)
+ */
+export interface StoredKeypair {
+  name: string;
+  publicKey: string;
+  secretKeyBase58: string;
+}
+
+export interface DevKeypairInfo {
+  name: string;
+  publicKey: string;
+  balance: number; // SOL
+}
+
+function loadKeypairs(): StoredKeypair[] {
+  if (!browser) return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function saveKeypairs(keypairs: StoredKeypair[]) {
+  if (!browser) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(keypairs));
+}
+
+function createDevKeypairStore() {
+  const keypairs = writable<StoredKeypair[]>(loadKeypairs());
+  const activeName = writable<string | null>(null);
+  const balances = writable<Record<string, number>>({});
+
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Initialize active keypair from first stored keypair
+  if (browser) {
+    const stored = loadKeypairs();
+    if (stored.length > 0) {
+      activeName.set(stored[0].name);
+    }
+  }
+
+  function getKeypairObject(stored: StoredKeypair): Keypair {
+    const secretKey = bs58.decode(stored.secretKeyBase58);
+    return Keypair.fromSecretKey(secretKey);
+  }
+
+  async function pollBalances() {
+    const conn = get(connection);
+    const kps = get(keypairs);
+    const newBalances: Record<string, number> = {};
+
+    for (const kp of kps) {
+      try {
+        const pk = new PublicKey(kp.publicKey);
+        const bal = await conn.getBalance(pk);
+        newBalances[kp.publicKey] = bal / LAMPORTS_PER_SOL;
+      } catch {
+        newBalances[kp.publicKey] = 0;
+      }
+    }
+
+    balances.set(newBalances);
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollBalances();
+    pollInterval = setInterval(pollBalances, 5000);
+  }
+
+  function stopPolling() {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  }
+
+  // Auto-start polling when there are keypairs
+  if (browser) {
+    const stored = loadKeypairs();
+    if (stored.length > 0) {
+      startPolling();
+    }
+  }
+
+  return {
+    keypairs: { subscribe: keypairs.subscribe },
+    activeName: { subscribe: activeName.subscribe },
+    balances: { subscribe: balances.subscribe },
+
+    generateKeypair(name: string) {
+      const kp = Keypair.generate();
+      const stored: StoredKeypair = {
+        name,
+        publicKey: kp.publicKey.toBase58(),
+        secretKeyBase58: bs58.encode(kp.secretKey)
+      };
+
+      keypairs.update(arr => {
+        // Prevent duplicate names
+        const filtered = arr.filter(k => k.name !== name);
+        const next = [...filtered, stored];
+        saveKeypairs(next);
+        return next;
+      });
+
+      // Set as active if first keypair
+      const current = get(activeName);
+      if (!current) {
+        activeName.set(name);
+      }
+
+      startPolling();
+      return stored;
+    },
+
+    importKeypair(name: string, secretKeyArray: Uint8Array) {
+      const kp = Keypair.fromSecretKey(secretKeyArray);
+      const stored: StoredKeypair = {
+        name,
+        publicKey: kp.publicKey.toBase58(),
+        secretKeyBase58: bs58.encode(kp.secretKey)
+      };
+
+      keypairs.update(arr => {
+        const filtered = arr.filter(k => k.name !== name);
+        const next = [...filtered, stored];
+        saveKeypairs(next);
+        return next;
+      });
+
+      const current = get(activeName);
+      if (!current) {
+        activeName.set(name);
+      }
+
+      startPolling();
+      return stored;
+    },
+
+    removeKeypair(name: string) {
+      keypairs.update(arr => {
+        const next = arr.filter(k => k.name !== name);
+        saveKeypairs(next);
+        if (next.length === 0) stopPolling();
+        return next;
+      });
+
+      if (get(activeName) === name) {
+        const remaining = get(keypairs);
+        activeName.set(remaining.length > 0 ? remaining[0].name : null);
+      }
+    },
+
+    setActive(name: string) {
+      activeName.set(name);
+    },
+
+    getKeypair(name: string): Keypair | null {
+      const kps = get(keypairs);
+      const found = kps.find(k => k.name === name);
+      if (!found) return null;
+      return getKeypairObject(found);
+    },
+
+    getActiveKeypair(): Keypair | null {
+      const name = get(activeName);
+      if (!name) return null;
+      const kps = get(keypairs);
+      const found = kps.find(k => k.name === name);
+      if (!found) return null;
+      return getKeypairObject(found);
+    },
+
+    async requestAirdrop(amount: number = 2): Promise<string> {
+      const name = get(activeName);
+      if (!name) throw new Error('No active keypair');
+      const kps = get(keypairs);
+      const found = kps.find(k => k.name === name);
+      if (!found) throw new Error('Keypair not found');
+
+      const conn = get(connection);
+      const pk = new PublicKey(found.publicKey);
+      const sig = await conn.requestAirdrop(pk, amount * LAMPORTS_PER_SOL);
+      await conn.confirmTransaction(sig, 'confirmed');
+
+      // Refresh balances immediately
+      await pollBalances();
+      return sig;
+    },
+
+    refreshBalances: pollBalances,
+    startPolling,
+    stopPolling
+  };
+}
+
+export const devKeys = createDevKeypairStore();
+
+/**
+ * Derived: info about the currently active keypair
+ */
+export const activeKeypairInfo = derived(
+  [devKeys.keypairs, devKeys.activeName, devKeys.balances],
+  ([$keypairs, $activeName, $balances]) => {
+    if (!$activeName) return null;
+    const found = $keypairs.find(k => k.name === $activeName);
+    if (!found) return null;
+    return {
+      name: found.name,
+      publicKey: found.publicKey,
+      balance: $balances[found.publicKey] ?? 0
+    } as DevKeypairInfo;
+  }
+);

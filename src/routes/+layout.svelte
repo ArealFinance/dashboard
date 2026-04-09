@@ -3,7 +3,8 @@
   import { page } from '$app/stores';
   import {
     Hexagon, Coins, Vote, CircleDollarSign, ArrowLeftRight,
-    GitBranch, Bot, LayoutDashboard, ChevronRight
+    GitBranch, Bot, LayoutDashboard, ChevronRight,
+    Terminal, Upload, PlayCircle
   } from 'lucide-svelte';
   import WalletButton from '$lib/components/WalletButton.svelte';
   import NetworkSelector from '$lib/components/NetworkSelector.svelte';
@@ -26,6 +27,12 @@
     { label: 'Native DEX', href: '/dex', icon: ArrowLeftRight, enabled: false, description: 'Layer 4-5' },
     { label: 'Yield Distribution', href: '/yd', icon: GitBranch, enabled: false, description: 'Layer 7' },
     { label: 'Bots', href: '/bots', icon: Bot, enabled: false, description: 'Layer 8-9' },
+  ];
+
+  const devNavItems: NavItem[] = [
+    { label: 'Dev Hub', href: '/dev', icon: Terminal, enabled: true, description: 'Keypairs & status' },
+    { label: 'Deploy', href: '/dev/deploy', icon: Upload, enabled: true, description: 'Program deploy' },
+    { label: 'E2E Tests', href: '/dev/e2e', icon: PlayCircle, enabled: true, description: 'Test runner' },
   ];
 
   function isActive(href: string): boolean {
@@ -51,6 +58,17 @@
           {#if !item.enabled}
             <span class="nav-badge">{item.description}</span>
           {:else if isActive(item.href)}
+            <ChevronRight size={14} class="nav-arrow" />
+          {/if}
+        </a>
+      {/each}
+      <div class="nav-divider"></div>
+      <span class="nav-section-label">Dev Tools</span>
+      {#each devNavItems as item}
+        <a href={item.href} class="nav-item" class:active={isActive(item.href)} class:disabled={!item.enabled}>
+          <svelte:component this={item.icon} size={16} />
+          <span class="nav-label">{item.label}</span>
+          {#if isActive(item.href)}
             <ChevronRight size={14} class="nav-arrow" />
           {/if}
         </a>
@@ -168,6 +186,21 @@
     font-size: var(--text-xs);
     color: var(--color-text-muted);
     font-family: var(--font-mono);
+  }
+
+  .nav-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: var(--space-3) var(--space-3);
+  }
+
+  .nav-section-label {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: var(--space-1) var(--space-3);
+    font-weight: 500;
   }
 
   :global(.nav-arrow) {
