@@ -1,0 +1,43 @@
+import { writable, derived, get } from 'svelte/store';
+import { Connection } from '@solana/web3.js';
+import { browser } from '$app/environment';
+
+const STORAGE_KEY = 'areal_ot_network';
+
+export type Cluster = 'devnet' | 'mainnet-beta';
+
+const RPC_ENDPOINTS: Record<Cluster, string> = {
+  'devnet': 'https://api.devnet.solana.com',
+  'mainnet-beta': 'https://api.mainnet-beta.solana.com'
+};
+
+function getInitialCluster(): Cluster {
+  if (browser) {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === 'devnet' || saved === 'mainnet-beta') return saved;
+  }
+  return 'devnet';
+}
+
+function createNetworkStore() {
+  const { subscribe, set } = writable<Cluster>(getInitialCluster());
+
+  return {
+    subscribe,
+
+    setCluster(cluster: Cluster) {
+      set(cluster);
+      if (browser) {
+        localStorage.setItem(STORAGE_KEY, cluster);
+      }
+    }
+  };
+}
+
+export const network = createNetworkStore();
+
+export const rpcEndpoint = derived(network, ($network) => RPC_ENDPOINTS[$network]);
+
+export const connection = derived(rpcEndpoint, ($rpcEndpoint) => {
+  return new Connection($rpcEndpoint, 'confirmed');
+});
