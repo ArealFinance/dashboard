@@ -28,6 +28,9 @@ const SYSTEM_ADDRESSES: KnownAddress[] = [
  * Cluster-specific known addresses (mints, ATAs, etc.)
  */
 const CLUSTER_ADDRESSES: Record<Cluster, KnownAddress[]> = {
+  'localnet': [
+    { address: 'So11111111111111111111111111111111111111112', label: 'Wrapped SOL', type: 'mint', module: 'spl' },
+  ],
   'devnet': [
     { address: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', label: 'USDC', type: 'mint', module: 'spl' },
     { address: 'So11111111111111111111111111111111111111112', label: 'Wrapped SOL', type: 'mint', module: 'spl' },

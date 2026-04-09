@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Globe } from 'lucide-svelte';
-  import { network } from '$lib/stores/network';
+  import { network, clusterLabels, allClusters } from '$lib/stores/network';
   import type { Cluster } from '$lib/stores/network';
 
   function handleChange(e: Event) {
@@ -12,10 +12,11 @@
 <div class="network-selector">
   <Globe size={14} />
   <select value={$network} on:change={handleChange}>
-    <option value="devnet">Devnet</option>
-    <option value="mainnet-beta">Mainnet</option>
+    {#each allClusters as cluster}
+      <option value={cluster}>{clusterLabels[cluster]}</option>
+    {/each}
   </select>
-  <span class="indicator" class:devnet={$network === 'devnet'} class:mainnet={$network === 'mainnet-beta'}></span>
+  <span class="indicator" class:localnet={$network === 'localnet'} class:devnet={$network === 'devnet'} class:mainnet={$network === 'mainnet-beta'}></span>
 </div>
 
 <style>
@@ -51,6 +52,10 @@
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
+  }
+
+  .indicator.localnet {
+    background: var(--color-info);
   }
 
   .indicator.devnet {

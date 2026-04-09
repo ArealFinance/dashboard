@@ -128,9 +128,9 @@ export function formatCooldown(secondsRemaining: number): string {
 export function explorerUrl(
   value: string,
   type: 'tx' | 'address' | 'account' = 'address',
-  cluster: 'devnet' | 'mainnet-beta' = 'devnet'
+  cluster: string = 'devnet'
 ): string {
   const base = 'https://explorer.solana.com';
-  const clusterParam = cluster === 'devnet' ? '?cluster=devnet' : '';
+  const clusterParam = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster === 'localnet' ? 'custom&customUrl=https://rpc.areal.finance' : cluster}`;
   return `${base}/${type}/${value}${clusterParam}`;
 }

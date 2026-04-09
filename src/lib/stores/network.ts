@@ -2,21 +2,28 @@ import { writable, derived, get } from 'svelte/store';
 import { Connection } from '@solana/web3.js';
 import { browser } from '$app/environment';
 
-const STORAGE_KEY = 'areal_ot_network';
+const STORAGE_KEY = 'areal_network';
 
-export type Cluster = 'devnet' | 'mainnet-beta';
+export type Cluster = 'localnet' | 'devnet' | 'mainnet-beta';
 
 const RPC_ENDPOINTS: Record<Cluster, string> = {
+  'localnet': 'https://rpc.areal.finance',
   'devnet': 'https://api.devnet.solana.com',
   'mainnet-beta': 'https://api.mainnet-beta.solana.com'
+};
+
+const CLUSTER_LABELS: Record<Cluster, string> = {
+  'localnet': 'Test Validator',
+  'devnet': 'Devnet',
+  'mainnet-beta': 'Mainnet'
 };
 
 function getInitialCluster(): Cluster {
   if (browser) {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === 'devnet' || saved === 'mainnet-beta') return saved;
+    if (saved === 'localnet' || saved === 'devnet' || saved === 'mainnet-beta') return saved;
   }
-  return 'devnet';
+  return 'localnet';
 }
 
 function createNetworkStore() {
@@ -35,9 +42,15 @@ function createNetworkStore() {
 }
 
 export const network = createNetworkStore();
+export const clusterLabels = CLUSTER_LABELS;
+export const allClusters: Cluster[] = ['localnet', 'devnet', 'mainnet-beta'];
 
 export const rpcEndpoint = derived(network, ($network) => RPC_ENDPOINTS[$network]);
 
 export const connection = derived(rpcEndpoint, ($rpcEndpoint) => {
-  return new Connection($rpcEndpoint, 'confirmed');
+  return new Connection($rpcEndpoint, {
+    commitment: 'confirmed',
+    wsEndpoint: false as any,        // disable WebSocket — use HTTP polling only
+    confirmTransactionInitialTimeout: 30000,
+  });
 });

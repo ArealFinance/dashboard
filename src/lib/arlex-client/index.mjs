@@ -37,7 +37,8 @@ function serializeArgs(fields, values, registry) {
   const buffers = [];
   for (const field of fields) {
     const val = values[field.name];
-    if (val === void 0) throw new Error(`Missing arg: ${field.name}`);
+    const isOption = typeof field.type === "object" && "option" in field.type;
+    if (val === void 0 && !isOption) throw new Error(`Missing arg: ${field.name}`);
     buffers.push(serializeType(field.type, val, registry));
   }
   return Buffer.concat(buffers);
@@ -404,8 +405,14 @@ var ArlexClient = class {
     tx.feePayer = payer.publicKey;
     const signers = [payer, ...options.signers || []];
     try {
-      const sig = await this.connection.sendTransaction(tx, signers);
-      await this.connection.confirmTransaction(sig, "confirmed");
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = blockhash;
+      tx.lastValidBlockHeight = lastValidBlockHeight;
+      const sig = await this.connection.sendTransaction(tx, signers, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed"
+      });
+      await this.pollConfirmation(sig, lastValidBlockHeight);
       return sig;
     } catch (err) {
       const code = extractErrorCode(err);
@@ -414,6 +421,31 @@ var ArlexClient = class {
       }
       throw err;
     }
+  }
+  /**
+   * Poll getSignatureStatuses until confirmed or expired.
+   * Works without WebSocket — pure HTTP polling.
+   */
+  async pollConfirmation(signature, lastValidBlockHeight, intervalMs = 1e3, timeoutMs = 6e4) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const { value } = await this.connection.getSignatureStatuses([signature]);
+      const status = value?.[0];
+      if (status) {
+        if (status.err) {
+          throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+        }
+        if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") {
+          return;
+        }
+      }
+      const blockHeight = await this.connection.getBlockHeight("confirmed");
+      if (blockHeight > lastValidBlockHeight) {
+        throw new Error("Transaction expired: block height exceeded");
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    throw new Error(`Transaction confirmation timeout after ${timeoutMs}ms`);
   }
   /**
    * Fetch and deserialize an account

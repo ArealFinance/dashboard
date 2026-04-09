@@ -195,7 +195,12 @@ function createDevKeypairStore() {
       const conn = get(connection);
       const pk = new PublicKey(found.publicKey);
       const sig = await conn.requestAirdrop(pk, amount * LAMPORTS_PER_SOL);
-      await conn.confirmTransaction(sig, 'confirmed');
+      // Poll for confirmation (no WebSocket)
+      for (let i = 0; i < 30; i++) {
+        const { value } = await conn.getSignatureStatuses([sig]);
+        if (value?.[0]?.confirmationStatus === 'confirmed' || value?.[0]?.confirmationStatus === 'finalized') break;
+        await new Promise(r => setTimeout(r, 1000));
+      }
 
       // Refresh balances immediately
       await pollBalances();

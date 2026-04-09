@@ -119,6 +119,11 @@ declare class ArlexClient {
      */
     execute(instructionName: string, options: ExecuteOptions, payer: Keypair): Promise<string>;
     /**
+     * Poll getSignatureStatuses until confirmed or expired.
+     * Works without WebSocket — pure HTTP polling.
+     */
+    private pollConfirmation;
+    /**
      * Fetch and deserialize an account
      */
     fetch(accountType: string, address: PublicKey, options?: FetchOptions): Promise<Record<string, any>>;

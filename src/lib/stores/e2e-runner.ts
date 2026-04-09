@@ -3,6 +3,7 @@ import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction 
 import { connection } from './network';
 import { devKeys } from './devkeys';
 import { arlexClient, programId } from './ot';
+import type { ArlexClient } from '$lib/arlex-client/index.mjs';
 import {
   findOtConfigPda,
   findRevenueAccountPda,
@@ -191,7 +192,7 @@ const stepExecutors: Record<string, StepExecutor> = {
     ctx.otTreasuryPda = otTreasuryPda;
     ctx.revenueTokenAccount = revenueTokenAccount;
 
-    const sig = await client.execute('initialize_ot', {
+    const tx = client.buildTransaction('initialize_ot', {
       accounts: {
         deployer: deployer.publicKey,
         ot_mint: ctx.otMint,
@@ -213,7 +214,8 @@ const stepExecutors: Record<string, StepExecutor> = {
         uri: Array.from(stringToFixedBytes('https://test.areal.finance/tot', 200)),
         initial_authority: Array.from(deployer.publicKey.toBytes())
       }
-    }, deployer);
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
 
     // Verify mint authority was transferred to OtConfig PDA
     const mintInfo = await getMintInfo(conn, ctx.otMint);
@@ -268,7 +270,7 @@ const stepExecutors: Record<string, StepExecutor> = {
       }
     ];
 
-    const sig = await client.execute('batch_update_destinations', {
+    const tx = client.buildTransaction('batch_update_destinations', {
       accounts: {
         authority: deployer.publicKey,
         ot_mint: ctx.otMint,
@@ -278,7 +280,8 @@ const stepExecutors: Record<string, StepExecutor> = {
       args: {
         destinations
       }
-    }, deployer);
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
 
     return {
       txSignature: sig,
@@ -321,7 +324,7 @@ const stepExecutors: Record<string, StepExecutor> = {
     const conn = get(connection);
     const client = get(arlexClient);
 
-    const sig = await client.execute('distribute_revenue', {
+    const tx = client.buildTransaction('distribute_revenue', {
       accounts: {
         crank: deployer.publicKey,
         ot_mint: ctx.otMint,
@@ -336,7 +339,8 @@ const stepExecutors: Record<string, StepExecutor> = {
         { pubkey: ctx.destAta_b, isSigner: false, isWritable: true },
         { pubkey: ctx.destAta_c, isSigner: false, isWritable: true }
       ]
-    }, deployer);
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
 
     // Verify balances
     const [feeBal, destABal, destBBal, destCBal, revBal] = await Promise.all([
@@ -387,7 +391,7 @@ const stepExecutors: Record<string, StepExecutor> = {
 
     const recipientAta = getAtaAddress(deployer.publicKey, ctx.otMint);
 
-    const sig = await client.execute('mint_ot', {
+    const tx = client.buildTransaction('mint_ot', {
       accounts: {
         authority: deployer.publicKey,
         ot_governance: ctx.otGovernancePda,
@@ -403,7 +407,8 @@ const stepExecutors: Record<string, StepExecutor> = {
       args: {
         amount: 1_000_000_000
       }
-    }, deployer);
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
 
     const balance = await getTokenBalance(conn, recipientAta);
 
@@ -437,7 +442,7 @@ const stepExecutors: Record<string, StepExecutor> = {
 
     // Spend 50 USDC from treasury
     const spendAmount = 50_000_000;
-    const sig = await client.execute('spend_treasury', {
+    const tx = client.buildTransaction('spend_treasury', {
       accounts: {
         authority: deployer.publicKey,
         ot_mint: ctx.otMint,
@@ -451,7 +456,8 @@ const stepExecutors: Record<string, StepExecutor> = {
       args: {
         amount: spendAmount
       }
-    }, deployer);
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
 
     const [treasuryBal, destBalAfter] = await Promise.all([
       getTokenBalance(conn, treasuryUsdcAta),
