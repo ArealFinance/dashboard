@@ -1243,7 +1243,17 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
     const client = get(rwtClientStore);
     const newAuth = Keypair.generate();
     const airdropSig = await conn.requestAirdrop(newAuth.publicKey, 1_000_000_000);
-    await conn.confirmTransaction(airdropSig);
+    // Use HTTP polling instead of WebSocket (tunnel doesn't support WS)
+    let confirmed = false;
+    for (let i = 0; i < 30; i++) {
+      const { value } = await conn.getSignatureStatuses([airdropSig]);
+      if (value?.[0]?.confirmationStatus === 'confirmed' || value?.[0]?.confirmationStatus === 'finalized') {
+        confirmed = true;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    if (!confirmed) throw new Error('Airdrop confirmation timeout');
     // Propose
     const proposeTx = client.buildTransaction('propose_authority_transfer', {
       accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda },
