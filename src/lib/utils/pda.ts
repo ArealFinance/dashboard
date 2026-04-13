@@ -66,6 +66,48 @@ export function findOtTreasuryPda(otMint: PublicKey, programId: PublicKey): [Pub
 }
 
 /**
+ * Derive FutarchyConfig PDA
+ */
+export function findFutarchyConfigPda(otMint: PublicKey, programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('futarchy_config'), otMint.toBuffer()],
+    programId
+  );
+}
+
+/**
+ * Derive Proposal PDA
+ */
+export function findProposalPda(configPda: PublicKey, proposalId: bigint, programId: PublicKey): [PublicKey, number] {
+  const idBuffer = Buffer.alloc(8);
+  idBuffer.writeBigUInt64LE(proposalId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('proposal'), configPda.toBuffer(), idBuffer],
+    programId
+  );
+}
+
+/**
+ * Derive RwtVault PDA (singleton)
+ */
+export function findRwtVaultPda(programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('rwt_vault')],
+    programId
+  );
+}
+
+/**
+ * Derive RwtDistributionConfig PDA (singleton)
+ */
+export function findRwtDistConfigPda(programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('dist_config_rwt')],
+    programId
+  );
+}
+
+/**
  * Derive Associated Token Account address
  */
 export function findAta(owner: PublicKey, mint: PublicKey): PublicKey {

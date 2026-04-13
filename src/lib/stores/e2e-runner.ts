@@ -532,9 +532,775 @@ const stepExecutors: Record<string, StepExecutor> = {
   }
 };
 
+// ---- Futarchy E2E Scenario ----
+
+interface FutarchyE2EContext extends E2EContext {
+  futarchyConfigPda?: PublicKey;
+  proposalPda?: PublicKey;
+  proposalId?: bigint;
+}
+
+function createFutarchyE2ESteps(): E2EStep[] {
+  return [
+    {
+      id: 'fut-bootstrap-ot',
+      name: 'Bootstrap OT (prerequisite)',
+      description: 'Create test mints, initialize OT with all PDAs. Self-contained — does not depend on OT E2E.',
+      status: 'pending'
+    },
+    {
+      id: 'fut-init',
+      name: 'Initialize Futarchy',
+      description: 'Create Futarchy governance for the test OT mint.',
+      status: 'pending'
+    },
+    {
+      id: 'fut-propose-transfer',
+      name: 'OT: Propose Authority Transfer',
+      description: 'On OT side, propose authority transfer to Futarchy config PDA',
+      status: 'pending'
+    },
+    {
+      id: 'fut-claim-governance',
+      name: 'Claim OT Governance',
+      description: 'Futarchy config PDA accepts OT governance authority via CPI',
+      status: 'pending'
+    },
+    {
+      id: 'fut-create-mint-proposal',
+      name: 'Create MintOt Proposal',
+      description: 'Create proposal to mint 500 OT tokens to deployer',
+      status: 'pending'
+    },
+    {
+      id: 'fut-approve-proposal',
+      name: 'Approve Proposal',
+      description: 'Authority approves the MintOt proposal',
+      status: 'pending'
+    },
+    {
+      id: 'fut-execute-mint',
+      name: 'Execute MintOt',
+      description: 'Permissionless execution — CPI to OT::mint_ot. Verify tokens minted.',
+      status: 'pending'
+    },
+    {
+      id: 'fut-verify-state',
+      name: 'Verify Final State',
+      description: 'Check proposal status=Executed, OT total_minted increased, token balance correct',
+      status: 'pending'
+    }
+  ];
+}
+
+const futarchyStepExecutors: Record<string, StepExecutor> = {
+  'fut-bootstrap-ot': async (ctx: FutarchyE2EContext, deployer: Keypair) => {
+    // Bootstrap a minimal OT instance for Futarchy testing
+    const conn = get(connection);
+    const client = get(arlexClient);
+
+    // Create OT mint (6 decimals)
+    const otMintResult = await createMint(conn, deployer, 6, deployer.publicKey);
+    ctx.otMint = otMintResult.mintAddress;
+    ctx.otMintKeypair = otMintResult.mintKeypair;
+
+    // Create USDC mint for fee ATA
+    const usdcMintResult = await createMint(conn, deployer, 6, deployer.publicKey);
+    ctx.usdcMint = usdcMintResult.mintAddress;
+    const usdcMintKeypair = usdcMintResult.mintKeypair;
+
+    // Create fee ATA
+    const feeAta = await createAta(conn, deployer, usdcMintKeypair.publicKey, deployer.publicKey);
+
+    // Derive all OT PDAs
+    const [otConfigPda] = findOtConfigPda(ctx.otMint, programId);
+    const [revenuePda] = findRevenueAccountPda(ctx.otMint, programId);
+    const [revenueConfigPda] = findRevenueConfigPda(ctx.otMint, programId);
+    const [governancePda] = findOtGovernancePda(ctx.otMint, programId);
+    const [treasuryPda] = findOtTreasuryPda(ctx.otMint, programId);
+
+    ctx.otConfigPda = otConfigPda;
+    ctx.otGovernancePda = governancePda;
+
+    // Initialize OT
+    const tx = client.buildTransaction('initialize_ot', {
+      accounts: {
+        deployer: deployer.publicKey,
+        ot_mint: ctx.otMint,
+        usdc_mint: usdcMintKeypair.publicKey,
+        ot_config: otConfigPda,
+        revenue_account: revenuePda,
+        revenue_token_account: getAtaAddress(revenuePda, usdcMintKeypair.publicKey),
+        revenue_config: revenueConfigPda,
+        ot_governance: governancePda,
+        ot_treasury: treasuryPda,
+        areal_fee_destination_account: feeAta,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SystemProgram.programId,
+        ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
+      },
+      args: {
+        name: Array.from(stringToFixedBytes('FutarchyTest', 32)),
+        symbol: Array.from(stringToFixedBytes('FTEST', 10)),
+        uri: Array.from(stringToFixedBytes('https://test.areal.finance', 200)),
+        initial_authority: Array.from(deployer.publicKey.toBytes())
+      }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+
+    return {
+      txSignature: sig,
+      result: {
+        'OT Mint': ctx.otMint.toBase58(),
+        'OT Config PDA': otConfigPda.toBase58(),
+        'OT Governance PDA': governancePda.toBase58()
+      }
+    };
+  },
+
+  'fut-init': async (ctx: FutarchyE2EContext, deployer: Keypair) => {
+    if (!ctx.otMint) throw new Error('OT not bootstrapped. Run bootstrap step first.');
+
+    const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
+    const { findFutarchyConfigPda, findOtGovernancePda } = await import('$lib/utils/pda');
+
+    const conn = get(connection);
+    const futClient = get(futClientStore);
+
+    const [configPda] = findFutarchyConfigPda(ctx.otMint, futProgramId);
+    const [otGovPda] = findOtGovernancePda(ctx.otMint, programId);
+
+    const tx = futClient.buildTransaction('initialize_futarchy', {
+      accounts: {
+        deployer: deployer.publicKey,
+        ot_mint: ctx.otMint,
+        ot_governance: otGovPda,
+        config: configPda,
+        system_program: SystemProgram.programId
+      },
+      args: {}
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    ctx.futarchyConfigPda = configPda;
+
+    return {
+      txSignature: sig,
+      result: { 'Config PDA': configPda.toBase58() }
+    };
+  },
+
+  'fut-propose-transfer': async (ctx: FutarchyE2EContext, deployer: Keypair) => {
+    if (!ctx.otMint || !ctx.futarchyConfigPda) throw new Error('Missing context');
+
+    const conn = get(connection);
+    const client = get(arlexClient);
+    const [otGovPda] = findOtGovernancePda(ctx.otMint, programId);
+
+    const tx = client.buildTransaction('propose_authority_transfer', {
+      accounts: {
+        authority: deployer.publicKey,
+        ot_mint: ctx.otMint,
+        ot_governance: otGovPda
+      },
+      args: { new_authority: Array.from(ctx.futarchyConfigPda.toBytes()) }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return {
+      txSignature: sig,
+      result: { 'Proposed to': ctx.futarchyConfigPda.toBase58() }
+    };
+  },
+
+  'fut-claim-governance': async (ctx: FutarchyE2EContext, deployer: Keypair) => {
+    if (!ctx.otMint || !ctx.futarchyConfigPda) throw new Error('Missing context');
+
+    const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
+    const conn = get(connection);
+    const futClient = get(futClientStore);
+    const [otGovPda] = findOtGovernancePda(ctx.otMint, programId);
+
+    const tx = futClient.buildTransaction('claim_ot_governance', {
+      accounts: {
+        executor: deployer.publicKey,
+        config: ctx.futarchyConfigPda,
+        ot_governance: otGovPda,
+        ot_mint: ctx.otMint,
+        ot_program: programId
+      },
+      args: {}
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return {
+      txSignature: sig,
+      result: { 'OT Governance': 'Claimed by Futarchy' }
+    };
+  },
+
+  'fut-create-mint-proposal': async (ctx: FutarchyE2EContext, deployer: Keypair) => {
+    if (!ctx.otMint || !ctx.futarchyConfigPda) throw new Error('Missing context');
+
+    const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
+    const { findProposalPda } = await import('$lib/utils/pda');
+    const conn = get(connection);
+    const futClient = get(futClientStore);
+
+    const proposalId = 0n;
+    const [proposalPda] = findProposalPda(ctx.futarchyConfigPda, proposalId, futProgramId);
+    const mintAmount = 500_000_000n; // 500 OT tokens (6 decimals)
+
+    const tx = futClient.buildTransaction('create_proposal', {
+      accounts: {
+        authority: deployer.publicKey,
+        config: ctx.futarchyConfigPda,
+        proposal: proposalPda,
+        system_program: SystemProgram.programId
+      },
+      args: {
+        proposal_type: 0, // MintOt
+        amount: mintAmount,
+        destination: Array.from(deployer.publicKey.toBytes()),
+        token_mint: Array.from(new Uint8Array(32)),
+        params_hash: Array.from(new Uint8Array(32))
+      }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    ctx.proposalPda = proposalPda;
+    ctx.proposalId = proposalId;
+
+    return {
+      txSignature: sig,
+      result: {
+        'Proposal PDA': proposalPda.toBase58(),
+        'Type': 'MintOt',
+        'Amount': '500,000,000'
+      }
+    };
+  },
+
+  'fut-approve-proposal': async (ctx: FutarchyE2EContext, deployer: Keypair) => {
+    if (!ctx.futarchyConfigPda || !ctx.proposalPda) throw new Error('Missing context');
+
+    const { futarchyClient: futClientStore } = await import('./futarchy');
+    const conn = get(connection);
+    const futClient = get(futClientStore);
+
+    const tx = futClient.buildTransaction('approve_proposal', {
+      accounts: {
+        authority: deployer.publicKey,
+        config: ctx.futarchyConfigPda,
+        proposal: ctx.proposalPda
+      },
+      args: {}
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return {
+      txSignature: sig,
+      result: { 'Status': 'Approved' }
+    };
+  },
+
+  'fut-execute-mint': async (ctx: FutarchyE2EContext, deployer: Keypair) => {
+    if (!ctx.otMint || !ctx.futarchyConfigPda || !ctx.proposalPda) throw new Error('Missing context');
+
+    const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
+    const { findOtConfigPda, findOtGovernancePda: findOtGov, findAta: findAtaUtil,
+      TOKEN_PROGRAM_ID: TPK, SYSTEM_PROGRAM_ID: SPK, ASSOCIATED_TOKEN_PROGRAM_ID: ATPK } = await import('$lib/utils/pda');
+    const conn = get(connection);
+    const futClient = get(futClientStore);
+
+    const [otGovPda] = findOtGov(ctx.otMint, programId);
+    const [otConfigPda] = findOtConfigPda(ctx.otMint, programId);
+    const recipientAta = findAtaUtil(deployer.publicKey, ctx.otMint);
+
+    const tx = futClient.buildTransaction('execute_proposal', {
+      accounts: {
+        executor: deployer.publicKey,
+        config: ctx.futarchyConfigPda,
+        proposal: ctx.proposalPda,
+        ot_program: programId
+      },
+      args: {},
+      remainingAccounts: [
+        { pubkey: otGovPda, isWritable: false, isSigner: false },
+        { pubkey: otConfigPda, isWritable: true, isSigner: false },
+        { pubkey: ctx.otMint, isWritable: true, isSigner: false },
+        { pubkey: recipientAta, isWritable: true, isSigner: false },
+        { pubkey: deployer.publicKey, isWritable: false, isSigner: false },
+        { pubkey: TPK, isWritable: false, isSigner: false },
+        { pubkey: SPK, isWritable: false, isSigner: false },
+        { pubkey: ATPK, isWritable: false, isSigner: false },
+      ],
+      computeUnits: 250_000
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return {
+      txSignature: sig,
+      result: { 'CPI': 'OT::mint_ot executed' }
+    };
+  },
+
+  'fut-verify-state': async (ctx: FutarchyE2EContext, deployer: Keypair) => {
+    if (!ctx.otMint || !ctx.futarchyConfigPda || !ctx.proposalPda) throw new Error('Missing context');
+
+    const { futarchyClient: futClientStore } = await import('./futarchy');
+    const futClient = get(futClientStore);
+    const conn = get(connection);
+
+    // Verify proposal state
+    const proposal = await futClient.fetch('Proposal', ctx.proposalPda);
+    const proposalStatus = proposal?.status === 2 ? 'PASS' : 'FAIL';
+
+    // Verify OT total_minted increased
+    const client = get(arlexClient);
+    const { findOtConfigPda } = await import('$lib/utils/pda');
+    const [otConfigPda] = findOtConfigPda(ctx.otMint, programId);
+    const otConfig = await client.fetch('OtConfig', otConfigPda);
+    const totalMinted = BigInt(otConfig?.total_minted?.toString() ?? '0');
+
+    // Verify token balance
+    const { findAta: findAtaUtil } = await import('$lib/utils/pda');
+    const recipientAta = findAtaUtil(deployer.publicKey, ctx.otMint);
+    let balance = 0n;
+    try {
+      const info = await conn.getTokenAccountBalance(recipientAta);
+      balance = BigInt(info.value.amount);
+    } catch { /* ATA may not exist */ }
+
+    return {
+      result: {
+        'Proposal Status': proposalStatus === 'PASS' ? '✅ Executed' : '❌ Not Executed',
+        'OT Total Minted': totalMinted.toString(),
+        'Recipient Balance': balance.toString(),
+        'Balance Check': balance >= 500_000_000n ? '✅ PASS' : '❌ FAIL'
+      }
+    };
+  }
+};
+
+// ---- RWT Engine E2E Scenario ----
+
+interface RwtE2EContext extends E2EContext {
+  rwtMintKeypair?: Keypair;
+  rwtMint?: PublicKey;
+  rwtVaultPda?: PublicKey;
+  distConfigPda?: PublicKey;
+  capitalAccAta?: PublicKey;
+  arealFeeAta?: PublicKey;       // Separate fee destination ATA
+  userUsdcAta?: PublicKey;       // User's USDC ATA (separate from fee!)
+  userRwtAta?: PublicKey;
+}
+
+function createRwtE2ESteps(): E2EStep[] {
+  return [
+    { id: 'rwt-create-usdc', name: 'Create Test USDC Mint', description: 'Create test USDC mint (6 decimals).', status: 'pending' },
+    { id: 'rwt-create-atas', name: 'Create ATAs', description: 'Create SEPARATE USDC ATAs: fee destination (deployer) + user deposit (separate owner).', status: 'pending' },
+    { id: 'rwt-init-vault', name: 'Initialize Vault', description: 'Create vault PDA, dist config, RWT mint, capital ATA. Verify full init state.', status: 'pending' },
+    { id: 'rwt-verify-init', name: 'Verify Init State', description: 'Assert: NAV=$1, capital=0, supply=0, paused=false, dist=70/15/15, manager=zeroed.', status: 'pending' },
+    { id: 'rwt-fund-user', name: 'Fund User USDC', description: 'Mint $100 USDC to user ATA + create RWT ATA.', status: 'pending' },
+    { id: 'rwt-mint-rwt', name: 'Mint RWT ($10)', description: 'mint_rwt $10. Assert exact: fee=100K, RWT=9.9M, capital=9.95M, NAV=1005050.', status: 'pending' },
+    { id: 'rwt-verify-fee-split', name: 'Verify Fee Split', description: 'Assert fee ATA received dao_fee=50K, capital ATA received 9.95M.', status: 'pending' },
+    { id: 'rwt-admin-mint', name: 'Admin Mint 100 RWT', description: 'admin_mint_rwt 100 RWT backed $100. Assert exact NAV and capital.', status: 'pending' },
+    { id: 'rwt-adjust-capital', name: 'Adjust Capital ($5)', description: 'Writedown $5. Assert exact capital drop and NAV recalc.', status: 'pending' },
+    { id: 'rwt-update-manager', name: 'Update Manager', description: 'Set manager to a test keypair, verify stored.', status: 'pending' },
+    { id: 'rwt-update-dist-config', name: 'Update Distribution Config', description: 'Change to 8000/1000/1000, verify stored.', status: 'pending' },
+    { id: 'rwt-pause-verify-blocked', name: 'Pause + Verify Blocked', description: 'Pause mint, attempt mint_rwt (must fail MintPaused), verify admin_mint still works.', status: 'pending' },
+    { id: 'rwt-unpause', name: 'Unpause', description: 'Unpause, verify mint_paused=false.', status: 'pending' },
+    { id: 'rwt-authority-transfer', name: 'Authority Transfer', description: 'Propose+accept, verify new authority works, old authority REJECTED.', status: 'pending' },
+  ];
+}
+
+const rwtStepExecutors: Record<string, StepExecutor> = {
+  'rwt-create-usdc': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    const conn = get(connection);
+    const { mintAddress, mintKeypair } = await createMint(conn, deployer, 6);
+    ctx.usdcMintKeypair = mintKeypair;
+    ctx.usdcMint = mintAddress;
+    return { result: { usdcMint: mintAddress.toBase58() } };
+  },
+
+  'rwt-create-atas': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.usdcMint) throw new Error('USDC mint not created');
+    const conn = get(connection);
+    // SEPARATE ATAs: fee destination vs user deposit (tester finding: must be distinct)
+    const feeOwner = Keypair.generate();
+    const feeAta = await createAta(conn, deployer, ctx.usdcMint, feeOwner.publicKey);
+    ctx.arealFeeAta = feeAta;
+    // User deposit ATA — deployer's own USDC ATA
+    const userUsdcAta = await createAta(conn, deployer, ctx.usdcMint, deployer.publicKey);
+    ctx.userUsdcAta = userUsdcAta;
+    return { result: {
+      arealFeeAta: feeAta.toBase58(),
+      userUsdcAta: userUsdcAta.toBase58(),
+      note: 'Separate ATAs for fee and user deposit'
+    }};
+  },
+
+  'rwt-init-vault': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.usdcMint || !ctx.arealFeeAta) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore, rwtProgramId: rwtProgId } = await import('./rwt');
+    const { findRwtVaultPda, findRwtDistConfigPda } = await import('$lib/utils/pda');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    const rwtMintKeypair = Keypair.generate();
+    const [vaultPda] = findRwtVaultPda(rwtProgId);
+    const [distConfigPda] = findRwtDistConfigPda(rwtProgId);
+    const capitalAccAta = getAtaAddress(vaultPda, ctx.usdcMint);
+    ctx.rwtMintKeypair = rwtMintKeypair;
+    ctx.rwtVaultPda = vaultPda;
+    ctx.distConfigPda = distConfigPda;
+    ctx.capitalAccAta = capitalAccAta;
+    const tx = client.buildTransaction('initialize_vault', {
+      accounts: {
+        deployer: deployer.publicKey, rwt_vault: vaultPda, dist_config: distConfigPda,
+        rwt_mint: rwtMintKeypair.publicKey, usdc_mint: ctx.usdcMint,
+        capital_accumulator_ata: capitalAccAta,
+        areal_fee_destination_account: ctx.arealFeeAta,
+        token_program: TOKEN_PROGRAM_ID, system_program: SYSTEM_PROGRAM_ID,
+        ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
+      },
+      args: {
+        initial_authority: Array.from(deployer.publicKey.toBytes()),
+        pause_authority: Array.from(deployer.publicKey.toBytes()),
+        liquidity_destination: Array.from(deployer.publicKey.toBytes()),
+        protocol_revenue_destination: Array.from(deployer.publicKey.toBytes())
+      }
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer, rwtMintKeypair]);
+    ctx.rwtMint = rwtMintKeypair.publicKey;
+    const mintInfo = await getMintInfo(conn, rwtMintKeypair.publicKey);
+    const authMatch = mintInfo.mintAuthority?.equals(vaultPda) ?? false;
+    return { txSignature: sig, result: {
+      'Vault PDA': vaultPda.toBase58(), 'RWT Mint': rwtMintKeypair.publicKey.toBase58(),
+      'Capital ATA': capitalAccAta.toBase58(),
+      'Mint Auth = Vault': authMatch ? 'PASS' : 'FAIL'
+    }};
+  },
+
+  'rwt-verify-init': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda || !ctx.distConfigPda) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const client = get(rwtClientStore);
+    const v = await client.fetch('RwtVault', ctx.rwtVaultPda);
+    const d = await client.fetch('RwtDistributionConfig', ctx.distConfigPda);
+    const nav = BigInt(v.nav_book_value.toString());
+    const capital = BigInt(v.total_invested_capital.toString());
+    const supply = BigInt(v.total_rwt_supply.toString());
+    const paused = v.mint_paused;
+    const bookBps = d.book_value_bps;
+    const liqBps = d.liquidity_bps;
+    const revBps = d.protocol_revenue_bps;
+    const managerBytes = v.manager instanceof Uint8Array ? v.manager : new Uint8Array(v.manager);
+    const managerZeroed = managerBytes.every((b: number) => b === 0);
+    const checks = {
+      'NAV': nav.toString(), 'NAV Expected': '1000000', 'NAV Match': nav === 1_000_000n ? 'PASS' : 'FAIL',
+      'Capital': capital.toString(), 'Capital Match': capital === 0n ? 'PASS' : 'FAIL',
+      'Supply': supply.toString(), 'Supply Match': supply === 0n ? 'PASS' : 'FAIL',
+      'Paused': paused ? 'FAIL' : 'PASS',
+      'Book BPS': bookBps.toString(), 'Book Match': bookBps === 7000 ? 'PASS' : 'FAIL',
+      'Liq BPS': liqBps.toString(), 'Liq Match': liqBps === 1500 ? 'PASS' : 'FAIL',
+      'Rev BPS': revBps.toString(), 'Rev Match': revBps === 1500 ? 'PASS' : 'FAIL',
+      'Manager Zeroed': managerZeroed ? 'PASS' : 'FAIL',
+    };
+    const allPass = Object.entries(checks).filter(([k]) => k.includes('Match') || k === 'Paused' || k === 'Manager Zeroed').every(([, v]) => v === 'PASS');
+    if (!allPass) throw new Error('Init state verification failed');
+    return { result: checks };
+  },
+
+  'rwt-fund-user': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.usdcMint || !ctx.userUsdcAta || !ctx.rwtMint) throw new Error('Previous steps not completed');
+    const conn = get(connection);
+    const sig = await mintTo(conn, deployer, ctx.usdcMint, ctx.userUsdcAta, 100_000_000n);
+    const ata = await createAta(conn, deployer, ctx.rwtMint, deployer.publicKey);
+    ctx.userRwtAta = ata;
+    const bal = await getTokenBalance(conn, ctx.userUsdcAta);
+    return { txSignature: sig, result: {
+      'USDC Balance': bal.toString(), 'User RWT ATA': ata.toBase58()
+    }};
+  },
+
+  'rwt-mint-rwt': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtMint || !ctx.rwtVaultPda || !ctx.userUsdcAta || !ctx.capitalAccAta || !ctx.userRwtAta || !ctx.arealFeeAta) {
+      throw new Error('Previous steps not completed');
+    }
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    const amount = 10_000_000; // $10
+    const tx = client.buildTransaction('mint_rwt', {
+      accounts: {
+        user: deployer.publicKey, rwt_vault: ctx.rwtVaultPda, rwt_mint: ctx.rwtMint,
+        user_deposit: ctx.userUsdcAta, user_rwt: ctx.userRwtAta,
+        capital_acc: ctx.capitalAccAta, dao_fee_account: ctx.arealFeeAta,
+        token_program: TOKEN_PROGRAM_ID
+      },
+      args: { amount, min_rwt_out: 1 }
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    const rwtBal = await getTokenBalance(conn, ctx.userRwtAta);
+    const v = await client.fetch('RwtVault', ctx.rwtVaultPda);
+    const nav = BigInt(v.nav_book_value.toString());
+    const capital = BigInt(v.total_invested_capital.toString());
+    const supply = BigInt(v.total_rwt_supply.toString());
+    // Exact math: fee=100000, dao=50000, vault=50000, net=9900000, rwt=9900000
+    // capital=9950000, supply=9900000, NAV=9950000*1000000/9900000=1005050
+    return { txSignature: sig, result: {
+      'RWT Out': rwtBal.toString(), 'RWT Expected': '9900000',
+      'RWT Match': rwtBal === 9_900_000n ? 'PASS' : 'FAIL',
+      'Capital': capital.toString(), 'Capital Expected': '9950000',
+      'Capital Match': capital === 9_950_000n ? 'PASS' : 'FAIL',
+      'Supply': supply.toString(), 'Supply Expected': '9900000',
+      'Supply Match': supply === 9_900_000n ? 'PASS' : 'FAIL',
+      'NAV': nav.toString(), 'NAV Expected': '1005050',
+      'NAV Match': nav === 1_005_050n ? 'PASS' : 'FAIL',
+    }};
+  },
+
+  'rwt-verify-fee-split': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.arealFeeAta || !ctx.capitalAccAta || !ctx.userUsdcAta) throw new Error('Previous steps not completed');
+    const conn = get(connection);
+    const feeBal = await getTokenBalance(conn, ctx.arealFeeAta);
+    const capitalBal = await getTokenBalance(conn, ctx.capitalAccAta);
+    const userBal = await getTokenBalance(conn, ctx.userUsdcAta);
+    // dao_fee=50000 to fee ATA, capital got net+vault_fee=9950000, user paid 10M total
+    return { result: {
+      'Fee ATA Balance': feeBal.toString(), 'Fee Expected': '50000',
+      'Fee Match': feeBal === 50_000n ? 'PASS' : 'FAIL',
+      'Capital ATA Balance': capitalBal.toString(), 'Capital Expected': '9950000',
+      'Capital Match': capitalBal === 9_950_000n ? 'PASS' : 'FAIL',
+      'User USDC Remaining': userBal.toString(), 'User Expected': '90000000',
+      'User Match': userBal === 90_000_000n ? 'PASS' : 'FAIL',
+    }};
+  },
+
+  'rwt-admin-mint': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtMint || !ctx.rwtVaultPda || !ctx.userRwtAta) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    const rwtAmount = 100_000_000; // 100 RWT
+    const backingUsd = 100_000_000; // $100
+    const tx = client.buildTransaction('admin_mint_rwt', {
+      accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda,
+        rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: TOKEN_PROGRAM_ID },
+      args: { rwt_amount: rwtAmount, backing_capital_usd: backingUsd }
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    const v = await client.fetch('RwtVault', ctx.rwtVaultPda);
+    const nav = BigInt(v.nav_book_value.toString());
+    const capital = BigInt(v.total_invested_capital.toString());
+    const supply = BigInt(v.total_rwt_supply.toString());
+    // After: capital=9950000+100000000=109950000, supply=9900000+100000000=109900000
+    // NAV=109950000*1000000/109900000=1000454
+    return { txSignature: sig, result: {
+      'Capital': capital.toString(), 'Capital Expected': '109950000',
+      'Capital Match': capital === 109_950_000n ? 'PASS' : 'FAIL',
+      'Supply': supply.toString(), 'Supply Expected': '109900000',
+      'Supply Match': supply === 109_900_000n ? 'PASS' : 'FAIL',
+      'NAV': nav.toString(), 'NAV Expected': '1000454',
+      'NAV Match': nav === 1_000_454n ? 'PASS' : 'FAIL',
+    }};
+  },
+
+  'rwt-adjust-capital': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    const writedown = 5_000_000; // $5
+    const tx = client.buildTransaction('adjust_capital', {
+      accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda },
+      args: { writedown_amount: writedown }
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    const v = await client.fetch('RwtVault', ctx.rwtVaultPda);
+    const capital = BigInt(v.total_invested_capital.toString());
+    const nav = BigInt(v.nav_book_value.toString());
+    // capital=109950000-5000000=104950000, NAV=104950000*1000000/109900000=955_414 (truncated)
+    const expectedCapital = 104_950_000n;
+    const expectedNav = 955_414n; // floor(104950000*1000000/109900000)
+    return { txSignature: sig, result: {
+      'Capital': capital.toString(), 'Capital Expected': expectedCapital.toString(),
+      'Capital Match': capital === expectedCapital ? 'PASS' : 'FAIL',
+      'NAV': nav.toString(), 'NAV Expected': expectedNav.toString(),
+      'NAV Match': nav === expectedNav ? 'PASS' : 'FAIL',
+    }};
+  },
+
+  'rwt-update-manager': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    const testManager = Keypair.generate();
+    const tx = client.buildTransaction('update_vault_manager', {
+      accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda },
+      args: { new_manager: Array.from(testManager.publicKey.toBytes()) }
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    const v = await client.fetch('RwtVault', ctx.rwtVaultPda);
+    const mgrBytes = v.manager instanceof Uint8Array ? v.manager : new Uint8Array(v.manager);
+    const mgrStr = bytesToBase58(mgrBytes);
+    return { txSignature: sig, result: {
+      'Manager Set': mgrStr, 'Expected': testManager.publicKey.toBase58(),
+      'Match': mgrStr === testManager.publicKey.toBase58() ? 'PASS' : 'FAIL'
+    }};
+  },
+
+  'rwt-update-dist-config': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda || !ctx.distConfigPda) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    const tx = client.buildTransaction('update_distribution_config', {
+      accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda, dist_config: ctx.distConfigPda },
+      args: {
+        book_value_bps: 8000, liquidity_bps: 1000, protocol_revenue_bps: 1000,
+        liquidity_destination: Array.from(deployer.publicKey.toBytes()),
+        protocol_revenue_destination: Array.from(deployer.publicKey.toBytes())
+      }
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    const d = await client.fetch('RwtDistributionConfig', ctx.distConfigPda);
+    return { txSignature: sig, result: {
+      'Book BPS': d.book_value_bps.toString(), 'Book Match': d.book_value_bps === 8000 ? 'PASS' : 'FAIL',
+      'Liq BPS': d.liquidity_bps.toString(), 'Liq Match': d.liquidity_bps === 1000 ? 'PASS' : 'FAIL',
+      'Rev BPS': d.protocol_revenue_bps.toString(), 'Rev Match': d.protocol_revenue_bps === 1000 ? 'PASS' : 'FAIL',
+    }};
+  },
+
+  'rwt-pause-verify-blocked': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda || !ctx.rwtMint || !ctx.userUsdcAta || !ctx.userRwtAta || !ctx.capitalAccAta || !ctx.arealFeeAta) {
+      throw new Error('Previous steps not completed');
+    }
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    // Pause
+    const pauseTx = client.buildTransaction('pause_mint', {
+      accounts: { pause_authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda }, args: {}
+    });
+    await signAndSendTransaction(conn, pauseTx, [deployer]);
+    const v1 = await client.fetch('RwtVault', ctx.rwtVaultPda);
+    const isPaused = v1.mint_paused;
+    // Attempt mint_rwt while paused — MUST FAIL
+    let mintBlocked = false;
+    try {
+      const mintTx = client.buildTransaction('mint_rwt', {
+        accounts: { user: deployer.publicKey, rwt_vault: ctx.rwtVaultPda, rwt_mint: ctx.rwtMint,
+          user_deposit: ctx.userUsdcAta, user_rwt: ctx.userRwtAta,
+          capital_acc: ctx.capitalAccAta, dao_fee_account: ctx.arealFeeAta,
+          token_program: TOKEN_PROGRAM_ID },
+        args: { amount: 1_000_000, min_rwt_out: 1 }
+      });
+      await signAndSendTransaction(conn, mintTx, [deployer]);
+    } catch {
+      mintBlocked = true;
+    }
+    // Verify admin_mint STILL works while paused
+    let adminWorked = false;
+    try {
+      const adminTx = client.buildTransaction('admin_mint_rwt', {
+        accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda,
+          rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: TOKEN_PROGRAM_ID },
+        args: { rwt_amount: 1_000_000, backing_capital_usd: 1_000_000 }
+      });
+      await signAndSendTransaction(conn, adminTx, [deployer]);
+      adminWorked = true;
+    } catch { /* admin should work */ }
+    return { result: {
+      'Paused': isPaused ? 'PASS' : 'FAIL',
+      'mint_rwt Blocked': mintBlocked ? 'PASS' : 'FAIL',
+      'admin_mint Works While Paused': adminWorked ? 'PASS' : 'FAIL',
+    }};
+  },
+
+  'rwt-unpause': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    const tx = client.buildTransaction('unpause_mint', {
+      accounts: { pause_authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda }, args: {}
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    const v = await client.fetch('RwtVault', ctx.rwtVaultPda);
+    return { txSignature: sig, result: {
+      'Unpaused': !v.mint_paused ? 'PASS' : 'FAIL'
+    }};
+  },
+
+  'rwt-authority-transfer': async (ctx: RwtE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda || !ctx.rwtMint || !ctx.userRwtAta) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+    const newAuth = Keypair.generate();
+    const airdropSig = await conn.requestAirdrop(newAuth.publicKey, 1_000_000_000);
+    await conn.confirmTransaction(airdropSig);
+    // Propose
+    const proposeTx = client.buildTransaction('propose_authority_transfer', {
+      accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda },
+      args: { new_authority: Array.from(newAuth.publicKey.toBytes()) }
+    });
+    await signAndSendTransaction(conn, proposeTx, [deployer]);
+    // Accept
+    const acceptTx = client.buildTransaction('accept_authority_transfer', {
+      accounts: { new_authority: newAuth.publicKey, rwt_vault: ctx.rwtVaultPda }, args: {}
+    });
+    const sig = await signAndSendTransaction(conn, acceptTx, [newAuth]);
+    // Verify new authority stored
+    const v = await client.fetch('RwtVault', ctx.rwtVaultPda);
+    const authBytes = v.authority instanceof Uint8Array ? v.authority : new Uint8Array(v.authority);
+    const authStr = bytesToBase58(authBytes);
+    const authMatch = authStr === newAuth.publicKey.toBase58();
+    const pendingCleared = !v.has_pending;
+    // CRITICAL: Verify old authority REJECTED
+    let oldRejected = false;
+    try {
+      const oldTx = client.buildTransaction('admin_mint_rwt', {
+        accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda,
+          rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: TOKEN_PROGRAM_ID },
+        args: { rwt_amount: 1, backing_capital_usd: 1 }
+      });
+      await signAndSendTransaction(conn, oldTx, [deployer]);
+    } catch {
+      oldRejected = true;
+    }
+    return { txSignature: sig, result: {
+      'New Authority': authStr, 'Expected': newAuth.publicKey.toBase58(),
+      'Authority Match': authMatch ? 'PASS' : 'FAIL',
+      'Pending Cleared': pendingCleared ? 'PASS' : 'FAIL',
+      'Old Auth Rejected': oldRejected ? 'PASS' : 'FAIL',
+    }};
+  }
+};
+
+// ---- Scenario Registry ----
+
+interface ScenarioDefinition {
+  id: string;
+  name: string;
+  steps: () => E2EStep[];
+  executors: Record<string, StepExecutor>;
+}
+
+const SCENARIOS: ScenarioDefinition[] = [
+  { id: 'ot-lifecycle', name: 'OT Full Lifecycle', steps: createOtE2ESteps, executors: stepExecutors },
+  { id: 'futarchy-governance', name: 'Futarchy Governance', steps: createFutarchyE2ESteps, executors: futarchyStepExecutors },
+  { id: 'rwt-lifecycle', name: 'RWT Mint & Manage', steps: createRwtE2ESteps, executors: rwtStepExecutors }
+];
+
 // ---- Store ----
 
 function createE2ERunnerStore() {
+  const selectedId = writable<string>('ot-lifecycle');
   const scenario = writable<E2EScenario>({
     id: 'ot-lifecycle',
     name: 'OT Full Lifecycle',
@@ -544,12 +1310,28 @@ function createE2ERunnerStore() {
 
   return {
     subscribe: scenario.subscribe,
+    selectedId,
+    scenarios: SCENARIOS.map(s => ({ id: s.id, name: s.name })),
+
+    selectScenario(id: string) {
+      const def = SCENARIOS.find(s => s.id === id);
+      if (!def) return;
+      selectedId.set(id);
+      scenario.set({
+        id: def.id,
+        name: def.name,
+        steps: def.steps(),
+        status: 'idle'
+      });
+    },
 
     reset() {
+      const id = get(selectedId);
+      const def = SCENARIOS.find(s => s.id === id) ?? SCENARIOS[0];
       scenario.set({
-        id: 'ot-lifecycle',
-        name: 'OT Full Lifecycle',
-        steps: createOtE2ESteps(),
+        id: def.id,
+        name: def.name,
+        steps: def.steps(),
         status: 'idle'
       });
     },
@@ -560,7 +1342,10 @@ function createE2ERunnerStore() {
         throw new Error('No active dev keypair. Generate or import one first.');
       }
 
-      const ctx: E2EContext = {};
+      const id = get(selectedId);
+      const def = SCENARIOS.find(s => s.id === id) ?? SCENARIOS[0];
+      const executors = def.executors;
+      const ctx: FutarchyE2EContext = {};
 
       scenario.update(s => ({
         ...s,
@@ -582,7 +1367,6 @@ function createE2ERunnerStore() {
           continue;
         }
 
-        // Mark as running
         scenario.update(s => {
           const newSteps = [...s.steps];
           newSteps[i] = { ...newSteps[i], status: 'running' };
@@ -590,7 +1374,7 @@ function createE2ERunnerStore() {
         });
 
         const stepId = steps[i].id;
-        const executor = stepExecutors[stepId];
+        const executor = executors[stepId];
         const startTime = Date.now();
 
         if (!executor) {

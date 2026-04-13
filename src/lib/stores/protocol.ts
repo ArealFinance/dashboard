@@ -1,5 +1,7 @@
 import { readable } from 'svelte/store';
 import idl from '$lib/idl/ownership-token.json';
+import futarchyIdl from '$lib/idl/futarchy.json';
+import rwtIdl from '$lib/idl/rwt-engine.json';
 
 /**
  * Protocol program descriptor
@@ -46,21 +48,21 @@ export const PROTOCOL_PROGRAMS: ProtocolProgram[] = [
   {
     id: 'futarchy',
     name: 'Futarchy',
-    programId: null,
-    status: 'pending',
+    programId: futarchyIdl.metadata?.address ?? null,
+    status: futarchyIdl.metadata?.address ? 'deployed' : 'pending',
     layer: '2',
-    idlPath: null,
+    idlPath: '$lib/idl/futarchy.json',
     instructions: 8,
-    description: 'Prediction market governance, proposal execution'
+    description: 'Per-OT governance, proposal execution via CPI'
   },
   {
     id: 'rwt',
     name: 'RWT Engine',
-    programId: null,
-    status: 'pending',
+    programId: rwtIdl.metadata?.address ?? null,
+    status: rwtIdl.metadata?.address ? 'deployed' : 'pending',
     layer: '3',
-    idlPath: null,
-    instructions: 12,
+    idlPath: '$lib/idl/rwt-engine.json',
+    instructions: 10,
     description: 'Reward token minting, NAV pricing, vault management'
   },
   {

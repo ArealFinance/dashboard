@@ -22,8 +22,8 @@
   const navItems: NavItem[] = [
     { label: 'Overview', href: '/', icon: LayoutDashboard, enabled: true, description: 'Protocol status' },
     { label: 'Ownership Token', href: '/ot', icon: Coins, enabled: true, description: 'Layer 1' },
-    { label: 'Futarchy', href: '/futarchy', icon: Vote, enabled: false, description: 'Layer 2' },
-    { label: 'RWT Engine', href: '/rwt', icon: CircleDollarSign, enabled: false, description: 'Layer 3' },
+    { label: 'Futarchy', href: '/futarchy', icon: Vote, enabled: true, description: 'Layer 2' },
+    { label: 'RWT Engine', href: '/rwt', icon: CircleDollarSign, enabled: true, description: 'Layer 3' },
     { label: 'Native DEX', href: '/dex', icon: ArrowLeftRight, enabled: false, description: 'Layer 4-5' },
     { label: 'Yield Distribution', href: '/yd', icon: GitBranch, enabled: false, description: 'Layer 7' },
     { label: 'Bots', href: '/bots', icon: Bot, enabled: false, description: 'Layer 8-9' },
