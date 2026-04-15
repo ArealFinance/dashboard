@@ -25,13 +25,17 @@ export async function signAndSendTransaction(
   transaction.sign(...signers);
 
   const rawTx = transaction.serialize();
+
+  console.log('[tx] sending transaction...');
   const signature = await connection.sendRawTransaction(rawTx, {
-    skipPreflight: false,
+    skipPreflight: true,
     preflightCommitment: 'confirmed',
   });
+  console.log('[tx] sent:', signature);
 
   // Poll for confirmation instead of using WebSocket
   await pollConfirmation(connection, signature, lastValidBlockHeight);
+  console.log('[tx] confirmed:', signature);
 
   return signature;
 }
@@ -43,28 +47,41 @@ async function pollConfirmation(
   connection: Connection,
   signature: string,
   lastValidBlockHeight: number,
-  intervalMs = 1000,
-  timeoutMs = 60000,
+  intervalMs = 2000,
+  timeoutMs = 120000,
 ): Promise<void> {
   const start = Date.now();
+  let attempt = 0;
 
   while (Date.now() - start < timeoutMs) {
-    const { value } = await connection.getSignatureStatuses([signature]);
-    const status = value?.[0];
+    attempt++;
+    try {
+      const { value } = await connection.getSignatureStatuses([signature]);
+      const status = value?.[0];
 
-    if (status) {
-      if (status.err) {
-        throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+      if (status) {
+        if (status.err) {
+          throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+        }
+        if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
+          return;
+        }
       }
-      if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
-        return;
-      }
-    }
 
-    // Check if blockhash expired
-    const blockHeight = await connection.getBlockHeight('confirmed');
-    if (blockHeight > lastValidBlockHeight) {
-      throw new Error('Transaction expired: block height exceeded');
+      // Check if blockhash expired (every 5th attempt to reduce RPC calls)
+      if (attempt % 5 === 0) {
+        const blockHeight = await connection.getBlockHeight('confirmed');
+        if (blockHeight > lastValidBlockHeight) {
+          throw new Error('Transaction expired: block height exceeded');
+        }
+      }
+    } catch (e: any) {
+      // If it's our own error, rethrow
+      if (e.message?.includes('Transaction failed') || e.message?.includes('Transaction expired')) {
+        throw e;
+      }
+      // Otherwise RPC error — retry
+      console.warn(`[tx] poll attempt ${attempt} failed:`, e.message);
     }
 
     await new Promise(r => setTimeout(r, intervalMs));
