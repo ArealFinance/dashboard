@@ -5,23 +5,243 @@
     "address": "5FAB2HRFT78AqmQ7c3auV3ttcqnoNx3VjDBYkSQbSZXL"
   },
   "instructions": [
-    { "name": "initialize_dex", "accounts": [], "args": [] },
-    { "name": "create_pool", "accounts": [], "args": [] },
-    { "name": "add_liquidity", "accounts": [], "args": [] },
-    { "name": "zap_liquidity", "accounts": [], "args": [] },
-    { "name": "remove_liquidity", "accounts": [], "args": [] },
-    { "name": "swap", "accounts": [], "args": [] },
-    { "name": "update_dex_config", "accounts": [], "args": [] },
-    { "name": "update_pool_creators", "accounts": [], "args": [] },
-    { "name": "pause_pool", "accounts": [], "args": [] },
-    { "name": "unpause_pool", "accounts": [], "args": [] },
-    { "name": "propose_authority_transfer", "accounts": [], "args": [] },
-    { "name": "accept_authority_transfer", "accounts": [], "args": [] }
+    {
+      "name": "initialize_dex",
+      "accounts": [
+        { "name": "deployer", "isMut": true, "isSigner": true },
+        { "name": "dex_config", "isMut": true, "isSigner": false },
+        { "name": "pool_creators", "isMut": true, "isSigner": false },
+        { "name": "system_program", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "areal_fee_destination", "type": { "array": ["u8", 32] } },
+        { "name": "pause_authority", "type": { "array": ["u8", 32] } },
+        { "name": "rebalancer", "type": { "array": ["u8", 32] } }
+      ]
+    },
+    {
+      "name": "create_pool",
+      "accounts": [
+        { "name": "creator", "isMut": true, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_creators", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false },
+        { "name": "token_a_mint", "isMut": false, "isSigner": false },
+        { "name": "token_b_mint", "isMut": false, "isSigner": false },
+        { "name": "vault_a", "isMut": true, "isSigner": true },
+        { "name": "vault_b", "isMut": true, "isSigner": true },
+        { "name": "token_program", "isMut": false, "isSigner": false },
+        { "name": "system_program", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "add_liquidity",
+      "accounts": [
+        { "name": "provider", "isMut": false, "isSigner": true },
+        { "name": "payer", "isMut": true, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false },
+        { "name": "lp_position", "isMut": true, "isSigner": false },
+        { "name": "provider_token_a", "isMut": true, "isSigner": false },
+        { "name": "provider_token_b", "isMut": true, "isSigner": false },
+        { "name": "vault_a", "isMut": true, "isSigner": false },
+        { "name": "vault_b", "isMut": true, "isSigner": false },
+        { "name": "token_program", "isMut": false, "isSigner": false },
+        { "name": "system_program", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount_a", "type": "u64" },
+        { "name": "amount_b", "type": "u64" }
+      ]
+    },
+    {
+      "name": "zap_liquidity",
+      "accounts": [
+        { "name": "provider", "isMut": false, "isSigner": true },
+        { "name": "payer", "isMut": true, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false },
+        { "name": "lp_position", "isMut": true, "isSigner": false },
+        { "name": "provider_token_a", "isMut": true, "isSigner": false },
+        { "name": "provider_token_b", "isMut": true, "isSigner": false },
+        { "name": "vault_a", "isMut": true, "isSigner": false },
+        { "name": "vault_b", "isMut": true, "isSigner": false },
+        { "name": "areal_fee_account", "isMut": true, "isSigner": false },
+        { "name": "token_program", "isMut": false, "isSigner": false },
+        { "name": "system_program", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount_a", "type": "u64" },
+        { "name": "amount_b", "type": "u64" },
+        { "name": "min_shares", "type": "u128" }
+      ]
+    },
+    {
+      "name": "remove_liquidity",
+      "accounts": [
+        { "name": "provider", "isMut": true, "isSigner": true },
+        { "name": "pool_state", "isMut": true, "isSigner": false },
+        { "name": "lp_position", "isMut": true, "isSigner": false },
+        { "name": "provider_token_a", "isMut": true, "isSigner": false },
+        { "name": "provider_token_b", "isMut": true, "isSigner": false },
+        { "name": "vault_a", "isMut": true, "isSigner": false },
+        { "name": "vault_b", "isMut": true, "isSigner": false },
+        { "name": "token_program", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "shares_to_burn", "type": "u128" }
+      ]
+    },
+    {
+      "name": "swap",
+      "accounts": [
+        { "name": "user", "isMut": false, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false },
+        { "name": "user_token_in", "isMut": true, "isSigner": false },
+        { "name": "user_token_out", "isMut": true, "isSigner": false },
+        { "name": "vault_in", "isMut": true, "isSigner": false },
+        { "name": "vault_out", "isMut": true, "isSigner": false },
+        { "name": "areal_fee_account", "isMut": true, "isSigner": false },
+        { "name": "token_program", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount_in", "type": "u64" },
+        { "name": "min_amount_out", "type": "u64" },
+        { "name": "a_to_b", "type": "bool" }
+      ]
+    },
+    {
+      "name": "update_dex_config",
+      "accounts": [
+        { "name": "authority", "isMut": false, "isSigner": true },
+        { "name": "dex_config", "isMut": true, "isSigner": false }
+      ],
+      "args": [
+        { "name": "base_fee_bps", "type": "u16" },
+        { "name": "lp_fee_share_bps", "type": "u16" },
+        { "name": "rebalancer", "type": { "array": ["u8", 32] } },
+        { "name": "is_active", "type": "bool" }
+      ]
+    },
+    {
+      "name": "update_pool_creators",
+      "accounts": [
+        { "name": "authority", "isMut": false, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_creators", "isMut": true, "isSigner": false }
+      ],
+      "args": [
+        { "name": "wallet", "type": { "array": ["u8", 32] } },
+        { "name": "action", "type": "u8" }
+      ]
+    },
+    {
+      "name": "pause_pool",
+      "accounts": [
+        { "name": "pause_authority", "isMut": false, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "unpause_pool",
+      "accounts": [
+        { "name": "pause_authority", "isMut": false, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "propose_authority_transfer",
+      "accounts": [
+        { "name": "authority", "isMut": false, "isSigner": true },
+        { "name": "dex_config", "isMut": true, "isSigner": false }
+      ],
+      "args": [
+        { "name": "new_authority", "type": { "array": ["u8", 32] } }
+      ]
+    },
+    {
+      "name": "accept_authority_transfer",
+      "accounts": [
+        { "name": "new_authority", "isMut": false, "isSigner": true },
+        { "name": "dex_config", "isMut": true, "isSigner": false },
+        { "name": "pool_creators", "isMut": true, "isSigner": false }
+      ],
+      "args": []
+    }
   ],
   "accounts": [
-    { "name": "DexConfig", "type": { "kind": "struct", "fields": [] } },
-    { "name": "PoolState", "type": { "kind": "struct", "fields": [] } },
-    { "name": "PoolCreators", "type": { "kind": "struct", "fields": [] } },
-    { "name": "LpPosition", "type": { "kind": "struct", "fields": [] } }
+    {
+      "name": "DexConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": { "array": ["u8", 32] } },
+          { "name": "pending_authority", "type": { "array": ["u8", 32] } },
+          { "name": "has_pending", "type": "bool" },
+          { "name": "pause_authority", "type": { "array": ["u8", 32] } },
+          { "name": "base_fee_bps", "type": "u16" },
+          { "name": "lp_fee_share_bps", "type": "u16" },
+          { "name": "areal_fee_destination", "type": { "array": ["u8", 32] } },
+          { "name": "rebalancer", "type": { "array": ["u8", 32] } },
+          { "name": "is_active", "type": "bool" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "PoolState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "pool_type", "type": "u8" },
+          { "name": "token_a_mint", "type": { "array": ["u8", 32] } },
+          { "name": "token_b_mint", "type": { "array": ["u8", 32] } },
+          { "name": "vault_a", "type": { "array": ["u8", 32] } },
+          { "name": "vault_b", "type": { "array": ["u8", 32] } },
+          { "name": "reserve_a", "type": "u64" },
+          { "name": "reserve_b", "type": "u64" },
+          { "name": "total_lp_shares", "type": "u128" },
+          { "name": "fee_bps", "type": "u16" },
+          { "name": "is_active", "type": "bool" },
+          { "name": "total_fees_accumulated", "type": "u64" },
+          { "name": "bin_step_bps", "type": "u16" },
+          { "name": "active_bin_id", "type": "i32" },
+          { "name": "ot_treasury_fee_destination", "type": { "array": ["u8", 32] } },
+          { "name": "has_ot_treasury", "type": "bool" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "PoolCreators",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": { "array": ["u8", 32] } },
+          { "name": "creators", "type": { "array": [{ "array": ["u8", 32] }, 10] } },
+          { "name": "active_count", "type": "u8" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "LpPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "pool", "type": { "array": ["u8", 32] } },
+          { "name": "owner", "type": { "array": ["u8", 32] } },
+          { "name": "shares", "type": "u128" },
+          { "name": "last_update_ts", "type": "i64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
   ]
 }
