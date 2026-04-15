@@ -1314,7 +1314,8 @@ function createDexE2ESteps(): E2EStep[] {
     { id: 'dex-create-usdc-mint', name: 'Create Test USDC Mint', description: 'SPL mint for USDC (6 decimals)', status: 'pending' },
     { id: 'dex-init', name: 'Initialize DEX', description: 'Create DexConfig + PoolCreators PDAs', status: 'pending' },
     { id: 'dex-create-pool', name: 'Create RWT/USDC Pool', description: 'StandardCurve pool with canonical mint ordering', status: 'pending' },
-    { id: 'dex-create-atas', name: 'Create ATAs + Mint USDC', description: 'Create token accounts and mint test USDC', status: 'pending' },
+    { id: 'dex-create-rwt-ata', name: 'Create RWT ATA', description: 'Create deployer RWT token account', status: 'pending' },
+    { id: 'dex-create-usdc-ata', name: 'Create USDC ATA + Mint', description: 'Create deployer USDC token account and mint test USDC', status: 'pending' },
     { id: 'dex-mint-rwt', name: 'Admin Mint RWT', description: 'Mint RWT via admin_mint_rwt on RWT Engine', status: 'pending' },
     { id: 'dex-add-first-lp', name: 'Add First Liquidity', description: 'First LP deposit — verify sqrt shares and MIN_LIQUIDITY burn', status: 'pending' },
     { id: 'dex-add-second-lp', name: 'Add Second Liquidity', description: 'Proportional LP deposit — verify shares calculation', status: 'pending' },
@@ -1448,21 +1449,22 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     };
   },
 
-  'dex-create-atas': async (ctx, deployer) => {
+  'dex-create-rwt-ata': async (ctx, deployer) => {
     const conn = get(connection);
     const rwtMint = (ctx as any).rwtMint as PublicKey;
+    const rwtAta = await createAta(conn, deployer, rwtMint, deployer.publicKey);
+    (ctx as any).rwtAta = rwtAta;
+    return { result: { rwtAta: rwtAta.toBase58() } };
+  },
+
+  'dex-create-usdc-ata': async (ctx, deployer) => {
+    const conn = get(connection);
     const usdcMint = (ctx as any).testUsdc as PublicKey;
     const usdcKeypair = (ctx as any).testUsdcKeypair as Keypair;
-
-    const rwtAta = await createAta(conn, deployer, rwtMint, deployer.publicKey);
     const usdcAta = await createAta(conn, deployer, usdcMint, deployer.publicKey);
-
-    const usdcAmount = 2_000_000_000;
-    await mintTo(conn, usdcKeypair, usdcMint, usdcAta, usdcAmount);
-
-    (ctx as any).rwtAta = rwtAta;
+    await mintTo(conn, usdcKeypair, usdcMint, usdcAta, 2_000_000_000);
     (ctx as any).usdcAta = usdcAta;
-    return { result: { rwtAta: rwtAta.toBase58(), usdcAta: usdcAta.toBase58(), usdcMinted: usdcAmount } };
+    return { result: { usdcAta: usdcAta.toBase58(), usdcMinted: 2_000_000_000 } };
   },
 
   'dex-mint-rwt': async (ctx, deployer) => {
