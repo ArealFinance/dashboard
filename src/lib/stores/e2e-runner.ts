@@ -1311,7 +1311,7 @@ interface ScenarioDefinition {
 function createDexE2ESteps(): E2EStep[] {
   return [
     { id: 'dex-create-rwt-mint', name: 'Load RWT Mint', description: 'Read deployed RWT_MINT from RWT Vault on-chain', status: 'pending' },
-    { id: 'dex-create-usdc-mint', name: 'Create Test USDC Mint', description: 'SPL mint for USDC (6 decimals)', status: 'pending' },
+    { id: 'dex-load-usdc-mint', name: 'Load USDC Mint', description: 'Read USDC mint from RWT Vault capital ATA', status: 'pending' },
     { id: 'dex-init', name: 'Initialize DEX', description: 'Create DexConfig + PoolCreators PDAs', status: 'pending' },
     { id: 'dex-create-pool', name: 'Create RWT/USDC Pool', description: 'StandardCurve pool with canonical mint ordering', status: 'pending' },
     { id: 'dex-create-rwt-ata', name: 'Create RWT ATA', description: 'Create deployer RWT token account', status: 'pending' },
@@ -1342,12 +1342,22 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     return { result: { rwtMint: rwtMint.toBase58(), source: 'on-chain RWT Vault' } };
   },
 
-  'dex-create-usdc-mint': async (ctx, deployer) => {
+  'dex-load-usdc-mint': async (ctx, deployer) => {
+    // Read USDC mint from RWT Vault's capital accumulator ATA
     const conn = get(connection);
-    const { mintAddress, mintKeypair } = await createMint(conn, deployer, 6);
-    (ctx as any).testUsdcKeypair = mintKeypair;
-    (ctx as any).testUsdc = mintAddress;
-    return { result: { usdcMint: mintAddress.toBase58() } };
+    const { rwtProgramId: rwtProgId } = await import('./rwt');
+    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const [vaultPda] = findRwtVaultPda(rwtProgId);
+    const vaultInfo = await conn.getAccountInfo(vaultPda);
+    if (!vaultInfo) throw new Error('RWT Vault not found — run RWT E2E first');
+    const capitalAta = new PublicKey(vaultInfo.data.slice(40, 72));
+    const ataInfo = await conn.getAccountInfo(capitalAta);
+    if (!ataInfo) throw new Error('Capital ATA not found');
+    const usdcMint = new PublicKey(ataInfo.data.slice(0, 32));
+    (ctx as any).testUsdc = usdcMint;
+    (ctx as any).capitalAta = capitalAta;
+    (ctx as any).vaultPda = vaultPda;
+    return { result: { usdcMint: usdcMint.toBase58(), source: 'RWT Vault capital ATA' } };
   },
 
   'dex-init': async (ctx, deployer) => {
@@ -1460,17 +1470,17 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
   'dex-create-usdc-ata': async (ctx, deployer) => {
     const conn = get(connection);
-    const usdcMint = (ctx as any).testUsdc as PublicKey;
+    const usdcMint = (ctx as any).testUsdc as PublicKey; // real USDC from vault
     const usdcAta = await createAta(conn, deployer, usdcMint, deployer.publicKey);
     (ctx as any).usdcAta = usdcAta;
-    return { result: { usdcAta: usdcAta.toBase58() } };
+    return { result: { usdcAta: usdcAta.toBase58(), mint: usdcMint.toBase58() } };
   },
 
   'dex-mint-usdc': async (ctx, deployer) => {
     const conn = get(connection);
     const usdcMint = (ctx as any).testUsdc as PublicKey;
     const usdcAta = (ctx as any).usdcAta as PublicKey;
-    // deployer is mint authority (createMint uses payer as authority by default)
+    // deployer is mint authority (OT/RWT E2E created this mint with deployer as authority)
     await mintTo(conn, deployer, usdcMint, usdcAta, 2_000_000_000);
     return { result: { usdcMinted: 2_000_000_000 } };
   },
@@ -1479,29 +1489,37 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     const conn = get(connection);
     const rwtMint = (ctx as any).rwtMint as PublicKey;
     const rwtAta = (ctx as any).rwtAta as PublicKey;
+    const usdcAta = (ctx as any).usdcAta as PublicKey;
+    const vaultPda = (ctx as any).vaultPda as PublicKey;
+    const capitalAta = (ctx as any).capitalAta as PublicKey;
 
+    // Use mint_rwt (user deposit USDC → receive RWT at NAV price)
     const { rwtClient: rwtClientStore, rwtProgramId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
     const rwtClient = get(rwtClientStore);
-    const [vaultPda] = findRwtVaultPda(rwtProgramId);
 
-    const rwtAmount = 1_000_000_000;
-    const tx = rwtClient.buildTransaction('admin_mint_rwt', {
+    // Areal fee destination = deployer's USDC ATA (for test)
+    const arealFeeAta = getAtaAddress(deployer.publicKey, (ctx as any).testUsdc);
+
+    const depositAmount = 1_000_000_000; // 1000 USDC
+    const tx = rwtClient.buildTransaction('mint_rwt', {
       accounts: {
-        authority: deployer.publicKey,
+        user: deployer.publicKey,
         rwt_vault: vaultPda,
         rwt_mint: rwtMint,
-        recipient_rwt: rwtAta,
+        user_deposit: usdcAta,
+        user_rwt: rwtAta,
+        capital_acc: capitalAta,
+        dao_fee_account: arealFeeAta,
         token_program: TOKEN_PROGRAM_ID,
       },
       args: {
-        rwt_amount: rwtAmount,
-        backing_capital_usd: rwtAmount,
+        amount: depositAmount,
+        min_rwt_out: 1, // accept any amount for test
       }
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    return { txSignature: sig, result: { rwtMinted: rwtAmount } };
+    return { txSignature: sig, result: { usdcDeposited: depositAmount, via: 'mint_rwt' } };
   },
 
   'dex-add-first-lp': async (ctx, deployer) => {
