@@ -1,0 +1,27 @@
+{
+  "version": "0.1.0",
+  "name": "native_dex",
+  "metadata": {
+    "address": "11111111111111111111111111111111"
+  },
+  "instructions": [
+    { "name": "initialize_dex", "accounts": [], "args": [] },
+    { "name": "create_pool", "accounts": [], "args": [] },
+    { "name": "add_liquidity", "accounts": [], "args": [] },
+    { "name": "zap_liquidity", "accounts": [], "args": [] },
+    { "name": "remove_liquidity", "accounts": [], "args": [] },
+    { "name": "swap", "accounts": [], "args": [] },
+    { "name": "update_dex_config", "accounts": [], "args": [] },
+    { "name": "update_pool_creators", "accounts": [], "args": [] },
+    { "name": "pause_pool", "accounts": [], "args": [] },
+    { "name": "unpause_pool", "accounts": [], "args": [] },
+    { "name": "propose_authority_transfer", "accounts": [], "args": [] },
+    { "name": "accept_authority_transfer", "accounts": [], "args": [] }
+  ],
+  "accounts": [
+    { "name": "DexConfig", "type": { "kind": "struct", "fields": [] } },
+    { "name": "PoolState", "type": { "kind": "struct", "fields": [] } },
+    { "name": "PoolCreators", "type": { "kind": "struct", "fields": [] } },
+    { "name": "LpPosition", "type": { "kind": "struct", "fields": [] } }
+  ]
+}

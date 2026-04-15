@@ -10,10 +10,15 @@ import {
   findRevenueConfigPda,
   findOtGovernancePda,
   findOtTreasuryPda,
+  findDexConfigPda,
+  findPoolCreatorsPda,
+  findPoolStatePda,
+  findLpPositionPda,
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID
 } from '$lib/utils/pda';
+import { dexClient, dexProgramId } from './dex';
 import { createMint, createAta, mintTo, getTokenBalance, getMintInfo, getAtaAddress } from '$lib/utils/spl';
 import { signAndSendTransaction } from '$lib/utils/tx';
 import { stringToFixedBytes, bytesToBase58 } from '$lib/utils/format';
@@ -1301,10 +1306,301 @@ interface ScenarioDefinition {
   executors: Record<string, StepExecutor>;
 }
 
+// ---- DEX E2E Scenario ----
+
+function createDexE2ESteps(): E2EStep[] {
+  return [
+    { id: 'dex-create-rwt-mint', name: 'Create Test RWT Mint', description: 'SPL mint for RWT (6 decimals)', status: 'pending' },
+    { id: 'dex-create-usdc-mint', name: 'Create Test USDC Mint', description: 'SPL mint for USDC (6 decimals)', status: 'pending' },
+    { id: 'dex-init', name: 'Initialize DEX', description: 'Create DexConfig + PoolCreators PDAs', status: 'pending' },
+    { id: 'dex-create-pool', name: 'Create RWT/USDC Pool', description: 'StandardCurve pool with canonical mint ordering', status: 'pending' },
+    { id: 'dex-mint-tokens', name: 'Mint Test Tokens', description: 'Mint RWT + USDC to deployer for LP and swaps', status: 'pending' },
+    { id: 'dex-add-first-lp', name: 'Add First Liquidity', description: 'First LP deposit — verify sqrt shares and MIN_LIQUIDITY burn', status: 'pending' },
+    { id: 'dex-add-second-lp', name: 'Add Second Liquidity', description: 'Proportional LP deposit — verify shares calculation', status: 'pending' },
+    { id: 'dex-swap-a-to-b', name: 'Swap A → B', description: 'Swap one token for other, verify fee split and output', status: 'pending' },
+    { id: 'dex-swap-b-to-a', name: 'Swap B → A', description: 'Reverse swap, verify fee direction', status: 'pending' },
+    { id: 'dex-remove-lp', name: 'Remove Liquidity', description: 'Remove partial LP shares, verify proportional return', status: 'pending' },
+  ];
+}
+
+const dexStepExecutors: Record<string, StepExecutor> = {
+  'dex-create-rwt-mint': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { mintAddress, mintKeypair } = await createMint(conn, deployer, 6);
+    (ctx as any).rwtMintKeypair = mintKeypair;
+    (ctx as any).rwtMint = mintAddress;
+    return { result: { rwtMint: mintAddress.toBase58() } };
+  },
+
+  'dex-create-usdc-mint': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { mintAddress, mintKeypair } = await createMint(conn, deployer, 6);
+    (ctx as any).testUsdcKeypair = mintKeypair;
+    (ctx as any).testUsdc = mintAddress;
+    return { result: { usdcMint: mintAddress.toBase58() } };
+  },
+
+  'dex-init': async (ctx, deployer) => {
+    const conn = get(connection);
+    const client = get(dexClient);
+    const [configPda] = findDexConfigPda(dexProgramId);
+    const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
+
+    const tx = client.buildTransaction('initialize_dex', {
+      accounts: {
+        deployer: deployer.publicKey,
+        dex_config: configPda,
+        pool_creators: creatorsPda,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: {
+        areal_fee_destination: Array.from(deployer.publicKey.toBytes()),
+        pause_authority: Array.from(deployer.publicKey.toBytes()),
+        rebalancer: Array.from(deployer.publicKey.toBytes()),
+      }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    await conn.confirmTransaction(sig, 'confirmed');
+    return {
+      txSignature: sig,
+      result: { dexConfig: configPda.toBase58(), poolCreators: creatorsPda.toBase58() }
+    };
+  },
+
+  'dex-create-pool': async (ctx, deployer) => {
+    const conn = get(connection);
+    const client = get(dexClient);
+    const rwtMint = (ctx as any).rwtMint as PublicKey;
+    const usdcMint = (ctx as any).testUsdc as PublicKey;
+
+    // Canonical order: smaller pubkey first
+    const [mintA, mintB] = rwtMint.toBuffer().compare(usdcMint.toBuffer()) < 0
+      ? [rwtMint, usdcMint] : [usdcMint, rwtMint];
+
+    const [configPda] = findDexConfigPda(dexProgramId);
+    const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
+    const [poolPda] = findPoolStatePda(mintA, mintB, dexProgramId);
+
+    const vaultA = Keypair.generate();
+    const vaultB = Keypair.generate();
+
+    const tx = client.buildTransaction('create_pool', {
+      accounts: {
+        creator: deployer.publicKey,
+        dex_config: configPda,
+        pool_creators: creatorsPda,
+        pool_state: poolPda,
+        token_a_mint: mintA,
+        token_b_mint: mintB,
+        vault_a: vaultA.publicKey,
+        vault_b: vaultB.publicKey,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: {}
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer, vaultA, vaultB]);
+    await conn.confirmTransaction(sig, 'confirmed');
+
+    (ctx as any).poolPda = poolPda;
+    (ctx as any).mintA = mintA;
+    (ctx as any).mintB = mintB;
+    (ctx as any).vaultA = vaultA.publicKey;
+    (ctx as any).vaultB = vaultB.publicKey;
+
+    return {
+      txSignature: sig,
+      result: { pool: poolPda.toBase58(), mintA: mintA.toBase58(), mintB: mintB.toBase58() }
+    };
+  },
+
+  'dex-mint-tokens': async (ctx, deployer) => {
+    const conn = get(connection);
+    const rwtMint = (ctx as any).rwtMint as PublicKey;
+    const usdcMint = (ctx as any).testUsdc as PublicKey;
+    const rwtKeypair = (ctx as any).rwtMintKeypair as Keypair;
+    const usdcKeypair = (ctx as any).testUsdcKeypair as Keypair;
+
+    // Create ATAs and mint tokens
+    const rwtAta = await createAta(conn, deployer, rwtMint, deployer.publicKey);
+    const usdcAta = await createAta(conn, deployer, usdcMint, deployer.publicKey);
+    const amount = 1_000_000_000; // 1000 tokens (6 decimals)
+    await mintTo(conn, rwtKeypair, rwtMint, rwtAta, amount);
+    await mintTo(conn, usdcKeypair, usdcMint, usdcAta, amount);
+
+    (ctx as any).rwtAta = rwtAta;
+    (ctx as any).usdcAta = usdcAta;
+    return { result: { rwtBalance: amount, usdcBalance: amount } };
+  },
+
+  'dex-add-first-lp': async (ctx, deployer) => {
+    const conn = get(connection);
+    const client = get(dexClient);
+    const poolPda = (ctx as any).poolPda as PublicKey;
+    const mintA = (ctx as any).mintA as PublicKey;
+    const mintB = (ctx as any).mintB as PublicKey;
+    const [lpPda] = findLpPositionPda(poolPda, deployer.publicKey, dexProgramId);
+    const [configPda] = findDexConfigPda(dexProgramId);
+
+    const amountA = 100_000_000; // 100 tokens
+    const amountB = 100_000_000;
+
+    const tx = client.buildTransaction('add_liquidity', {
+      accounts: {
+        provider: deployer.publicKey,
+        payer: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: poolPda,
+        lp_position: lpPda,
+        provider_token_a: getAtaAddress(deployer.publicKey, mintA),
+        provider_token_b: getAtaAddress(deployer.publicKey, mintB),
+        vault_a: (ctx as any).vaultA,
+        vault_b: (ctx as any).vaultB,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: { amount_a: amountA, amount_b: amountB }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    await conn.confirmTransaction(sig, 'confirmed');
+
+    // sqrt(100M * 100M) = 100M, user gets 100M - 1000 = 99,999,000
+    return {
+      txSignature: sig,
+      result: { expectedShares: '99999000', minLiquidityBurned: 1000 }
+    };
+  },
+
+  'dex-add-second-lp': async (ctx, deployer) => {
+    const conn = get(connection);
+    const client = get(dexClient);
+    const poolPda = (ctx as any).poolPda as PublicKey;
+    const mintA = (ctx as any).mintA as PublicKey;
+    const mintB = (ctx as any).mintB as PublicKey;
+    const [lpPda] = findLpPositionPda(poolPda, deployer.publicKey, dexProgramId);
+    const [configPda] = findDexConfigPda(dexProgramId);
+
+    const tx = client.buildTransaction('add_liquidity', {
+      accounts: {
+        provider: deployer.publicKey,
+        payer: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: poolPda,
+        lp_position: lpPda,
+        provider_token_a: getAtaAddress(deployer.publicKey, mintA),
+        provider_token_b: getAtaAddress(deployer.publicKey, mintB),
+        vault_a: (ctx as any).vaultA,
+        vault_b: (ctx as any).vaultB,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: { amount_a: 50_000_000, amount_b: 50_000_000 }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    await conn.confirmTransaction(sig, 'confirmed');
+    return { txSignature: sig, result: { action: 'proportional add' } };
+  },
+
+  'dex-swap-a-to-b': async (ctx, deployer) => {
+    const conn = get(connection);
+    const client = get(dexClient);
+    const poolPda = (ctx as any).poolPda as PublicKey;
+    const mintA = (ctx as any).mintA as PublicKey;
+    const mintB = (ctx as any).mintB as PublicKey;
+    const [configPda] = findDexConfigPda(dexProgramId);
+
+    // Create fee ATA if needed (deployer receives fees in this test)
+    const arealFeeAta = getAtaAddress(deployer.publicKey, mintA.toBuffer().compare(mintB.toBuffer()) < 0 ? mintA : mintB);
+
+    const tx = client.buildTransaction('swap', {
+      accounts: {
+        user: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: poolPda,
+        user_token_in: getAtaAddress(deployer.publicKey, mintA),
+        user_token_out: getAtaAddress(deployer.publicKey, mintB),
+        vault_in: (ctx as any).vaultA,
+        vault_out: (ctx as any).vaultB,
+        areal_fee_account: arealFeeAta,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { amount_in: 10_000_000, min_amount_out: 0, a_to_b: true }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    await conn.confirmTransaction(sig, 'confirmed');
+    return { txSignature: sig, result: { direction: 'A→B', amountIn: 10_000_000 } };
+  },
+
+  'dex-swap-b-to-a': async (ctx, deployer) => {
+    const conn = get(connection);
+    const client = get(dexClient);
+    const poolPda = (ctx as any).poolPda as PublicKey;
+    const mintA = (ctx as any).mintA as PublicKey;
+    const mintB = (ctx as any).mintB as PublicKey;
+    const [configPda] = findDexConfigPda(dexProgramId);
+    const arealFeeAta = getAtaAddress(deployer.publicKey, mintA.toBuffer().compare(mintB.toBuffer()) < 0 ? mintA : mintB);
+
+    const tx = client.buildTransaction('swap', {
+      accounts: {
+        user: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: poolPda,
+        user_token_in: getAtaAddress(deployer.publicKey, mintB),
+        user_token_out: getAtaAddress(deployer.publicKey, mintA),
+        vault_in: (ctx as any).vaultB,
+        vault_out: (ctx as any).vaultA,
+        areal_fee_account: arealFeeAta,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { amount_in: 5_000_000, min_amount_out: 0, a_to_b: false }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    await conn.confirmTransaction(sig, 'confirmed');
+    return { txSignature: sig, result: { direction: 'B→A', amountIn: 5_000_000 } };
+  },
+
+  'dex-remove-lp': async (ctx, deployer) => {
+    const conn = get(connection);
+    const client = get(dexClient);
+    const poolPda = (ctx as any).poolPda as PublicKey;
+    const mintA = (ctx as any).mintA as PublicKey;
+    const mintB = (ctx as any).mintB as PublicKey;
+    const [lpPda] = findLpPositionPda(poolPda, deployer.publicKey, dexProgramId);
+
+    // Remove 10% of shares (approximate)
+    const sharesToBurn = '14999850'; // ~10% of total
+
+    const tx = client.buildTransaction('remove_liquidity', {
+      accounts: {
+        provider: deployer.publicKey,
+        pool_state: poolPda,
+        lp_position: lpPda,
+        provider_token_a: getAtaAddress(deployer.publicKey, mintA),
+        provider_token_b: getAtaAddress(deployer.publicKey, mintB),
+        vault_a: (ctx as any).vaultA,
+        vault_b: (ctx as any).vaultB,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { shares_to_burn: sharesToBurn }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    await conn.confirmTransaction(sig, 'confirmed');
+    return { txSignature: sig, result: { sharesBurned: sharesToBurn } };
+  },
+};
+
 const SCENARIOS: ScenarioDefinition[] = [
   { id: 'ot-lifecycle', name: 'OT Full Lifecycle', steps: createOtE2ESteps, executors: stepExecutors },
   { id: 'futarchy-governance', name: 'Futarchy Governance', steps: createFutarchyE2ESteps, executors: futarchyStepExecutors },
-  { id: 'rwt-lifecycle', name: 'RWT Mint & Manage', steps: createRwtE2ESteps, executors: rwtStepExecutors }
+  { id: 'rwt-lifecycle', name: 'RWT Mint & Manage', steps: createRwtE2ESteps, executors: rwtStepExecutors },
+  { id: 'dex-lifecycle', name: 'DEX Pool & Swap', steps: createDexE2ESteps, executors: dexStepExecutors }
 ];
 
 // ---- Store ----

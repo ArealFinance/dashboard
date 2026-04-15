@@ -4,6 +4,8 @@ import { PROTOCOL_PROGRAMS } from '$lib/stores/protocol';
 import {
   findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
   findOtGovernancePda, findOtTreasuryPda, findAta,
+  findFutarchyConfigPda,
+  findDexConfigPda, findPoolCreatorsPda,
   USDC_MINTS
 } from '$lib/utils/pda';
 import { formatAddress, bytesToBase58, trimNullBytes } from '$lib/utils/format';
@@ -74,7 +76,11 @@ export function resolveAddress(
     if (destResolved) return destResolved;
   }
 
-  // 5. Fallback
+  // 5. DEX PDA resolution
+  const dexResolved = resolveDexPda(address);
+  if (dexResolved) return dexResolved;
+
+  // 6. Fallback
   return {
     label: formatAddress(address, 4),
     type: 'unknown'
@@ -181,20 +187,45 @@ function resolveDestinationAddress(address: string, otState: OtState): ResolvedA
 }
 
 /**
+ * Resolve an address against DEX PDA patterns (singletons only — pools need mint context)
+ */
+function resolveDexPda(address: string): ResolvedAddress | null {
+  try {
+    const { dexProgramId } = require('$lib/stores/dex');
+    const [configPda] = findDexConfigPda(dexProgramId);
+    if (configPda.toBase58() === address) {
+      return { label: 'DexConfig', type: 'pda', module: 'dex' };
+    }
+    const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
+    if (creatorsPda.toBase58() === address) {
+      return { label: 'PoolCreators', type: 'pda', module: 'dex' };
+    }
+  } catch {
+    // DEX module not available
+  }
+  return null;
+}
+
+/**
  * Resolve authority address to detect if it's a Futarchy governance PDA.
- * Futarchy PDA pattern: seeds = ['futarchy_gov', ot_mint]
- * Since Futarchy is not deployed yet, we can only do a heuristic check.
  */
 export function resolveAuthorityType(
   authorityAddress: string,
-  _otMint: PublicKey
+  otMint: PublicKey
 ): { type: 'wallet' | 'futarchy' | 'unknown'; label: string } {
-  // When Futarchy is deployed, we would derive:
-  // const [futarchyGovPda] = PublicKey.findProgramAddressSync(
-  //   [Buffer.from('futarchy_gov'), otMint.toBuffer()],
-  //   FUTARCHY_PROGRAM_ID
-  // );
-  // For now, we can't identify Futarchy PDAs since it's not deployed
+  try {
+    // Check if authority is the Futarchy config PDA for this OT mint
+    const { futarchyProgramId } = require('$lib/stores/futarchy');
+    const [futarchyConfigPda] = findFutarchyConfigPda(otMint, futarchyProgramId);
+    if (futarchyConfigPda.toBase58() === authorityAddress) {
+      return {
+        type: 'futarchy',
+        label: 'Futarchy Governance PDA'
+      };
+    }
+  } catch {
+    // Futarchy module not available
+  }
   return {
     type: 'wallet',
     label: 'Wallet (direct authority)'

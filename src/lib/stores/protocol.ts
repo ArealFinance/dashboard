@@ -2,6 +2,7 @@ import { readable } from 'svelte/store';
 import idl from '$lib/idl/ownership-token.json';
 import futarchyIdl from '$lib/idl/futarchy.json';
 import rwtIdl from '$lib/idl/rwt-engine.json';
+import dexIdl from '$lib/idl/native-dex.json';
 
 /**
  * Protocol program descriptor
@@ -68,12 +69,12 @@ export const PROTOCOL_PROGRAMS: ProtocolProgram[] = [
   {
     id: 'dex',
     name: 'Native DEX',
-    programId: null,
-    status: 'pending',
+    programId: dexIdl.metadata?.address ?? null,
+    status: dexIdl.metadata?.address ? 'deployed' : 'pending',
     layer: '4-5',
-    idlPath: null,
-    instructions: 22,
-    description: 'AMM pools, concentrated liquidity, swaps'
+    idlPath: '$lib/idl/native-dex.json',
+    instructions: 12,
+    description: 'StandardCurve AMM pools, swaps, LP management'
   },
   {
     id: 'yd',

@@ -107,6 +107,60 @@ export function findRwtDistConfigPda(programId: PublicKey): [PublicKey, number] 
   );
 }
 
+// =========================================================================
+// Native DEX PDAs
+// =========================================================================
+
+/**
+ * Derive DexConfig PDA (singleton)
+ */
+export function findDexConfigPda(programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('dex_config')],
+    programId
+  );
+}
+
+/**
+ * Derive PoolCreators PDA (singleton)
+ */
+export function findPoolCreatorsPda(programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('pool_creators')],
+    programId
+  );
+}
+
+/**
+ * Derive PoolState PDA
+ * Seeds: ["pool", token_a_mint, token_b_mint] (canonical order: a < b)
+ */
+export function findPoolStatePda(
+  tokenAMint: PublicKey,
+  tokenBMint: PublicKey,
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('pool'), tokenAMint.toBuffer(), tokenBMint.toBuffer()],
+    programId
+  );
+}
+
+/**
+ * Derive LpPosition PDA
+ * Seeds: ["lp", pool_state, provider]
+ */
+export function findLpPositionPda(
+  poolState: PublicKey,
+  provider: PublicKey,
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('lp'), poolState.toBuffer(), provider.toBuffer()],
+    programId
+  );
+}
+
 /**
  * Derive Associated Token Account address
  */
