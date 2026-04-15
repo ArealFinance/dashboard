@@ -1605,11 +1605,12 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     const poolPda = (ctx as any).poolPda as PublicKey;
     const mintA = (ctx as any).mintA as PublicKey;
     const mintB = (ctx as any).mintB as PublicKey;
-    const rwtMint = (ctx as any).rwtMint as PublicKey;
     const [configPda] = findDexConfigPda(dexProgramId);
 
-    // Protocol fee is always in RWT — use deployer's RWT ATA as fee destination
-    const arealFeeAta = getAtaAddress(deployer.publicKey, rwtMint);
+    // Read areal_fee_destination from DexConfig (offset 109..141)
+    const configInfo = await conn.getAccountInfo(configPda);
+    if (!configInfo) throw new Error('DexConfig not found');
+    const arealFeeAta = new PublicKey(configInfo.data.slice(109, 141));
 
     const tx = client.buildTransaction('swap', {
       accounts: {
@@ -1637,9 +1638,10 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     const poolPda = (ctx as any).poolPda as PublicKey;
     const mintA = (ctx as any).mintA as PublicKey;
     const mintB = (ctx as any).mintB as PublicKey;
-    const rwtMint = (ctx as any).rwtMint as PublicKey;
     const [configPda] = findDexConfigPda(dexProgramId);
-    const arealFeeAta = getAtaAddress(deployer.publicKey, rwtMint);
+    const configInfo = await conn.getAccountInfo(configPda);
+    if (!configInfo) throw new Error('DexConfig not found');
+    const arealFeeAta = new PublicKey(configInfo.data.slice(109, 141));
 
     const tx = client.buildTransaction('swap', {
       accounts: {
