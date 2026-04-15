@@ -1314,7 +1314,8 @@ function createDexE2ESteps(): E2EStep[] {
     { id: 'dex-create-usdc-mint', name: 'Create Test USDC Mint', description: 'SPL mint for USDC (6 decimals)', status: 'pending' },
     { id: 'dex-init', name: 'Initialize DEX', description: 'Create DexConfig + PoolCreators PDAs', status: 'pending' },
     { id: 'dex-create-pool', name: 'Create RWT/USDC Pool', description: 'StandardCurve pool with canonical mint ordering', status: 'pending' },
-    { id: 'dex-mint-tokens', name: 'Mint Test Tokens', description: 'Mint test USDC + admin_mint RWT via RWT Engine', status: 'pending' },
+    { id: 'dex-create-atas', name: 'Create ATAs + Mint USDC', description: 'Create token accounts and mint test USDC', status: 'pending' },
+    { id: 'dex-mint-rwt', name: 'Admin Mint RWT', description: 'Mint RWT via admin_mint_rwt on RWT Engine', status: 'pending' },
     { id: 'dex-add-first-lp', name: 'Add First Liquidity', description: 'First LP deposit — verify sqrt shares and MIN_LIQUIDITY burn', status: 'pending' },
     { id: 'dex-add-second-lp', name: 'Add Second Liquidity', description: 'Proportional LP deposit — verify shares calculation', status: 'pending' },
     { id: 'dex-swap-a-to-b', name: 'Swap A → B', description: 'Swap one token for other, verify fee split and output', status: 'pending' },
@@ -1447,29 +1448,34 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     };
   },
 
-  'dex-mint-tokens': async (ctx, deployer) => {
+  'dex-create-atas': async (ctx, deployer) => {
     const conn = get(connection);
     const rwtMint = (ctx as any).rwtMint as PublicKey;
     const usdcMint = (ctx as any).testUsdc as PublicKey;
     const usdcKeypair = (ctx as any).testUsdcKeypair as Keypair;
 
-    // Create ATAs
     const rwtAta = await createAta(conn, deployer, rwtMint, deployer.publicKey);
     const usdcAta = await createAta(conn, deployer, usdcMint, deployer.publicKey);
 
-    // Mint test USDC (we have the mint authority)
-    const usdcAmount = 2_000_000_000; // 2000 USDC (need extra for RWT minting deposit)
+    const usdcAmount = 2_000_000_000;
     await mintTo(conn, usdcKeypair, usdcMint, usdcAta, usdcAmount);
 
-    // Get RWT via mint_rwt (deposit USDC → receive RWT at NAV price)
-    // RWT Engine uses the REAL USDC mint from vault, but we have test USDC.
-    // For E2E, we admin_mint RWT directly (authority = deployer on test validator).
+    (ctx as any).rwtAta = rwtAta;
+    (ctx as any).usdcAta = usdcAta;
+    return { result: { rwtAta: rwtAta.toBase58(), usdcAta: usdcAta.toBase58(), usdcMinted: usdcAmount } };
+  },
+
+  'dex-mint-rwt': async (ctx, deployer) => {
+    const conn = get(connection);
+    const rwtMint = (ctx as any).rwtMint as PublicKey;
+    const rwtAta = (ctx as any).rwtAta as PublicKey;
+
     const { rwtClient: rwtClientStore, rwtProgramId } = await import('./rwt');
     const { findRwtVaultPda } = await import('$lib/utils/pda');
     const rwtClient = get(rwtClientStore);
     const [vaultPda] = findRwtVaultPda(rwtProgramId);
 
-    const rwtAmount = 1_000_000_000; // 1000 RWT
+    const rwtAmount = 1_000_000_000;
     const tx = rwtClient.buildTransaction('admin_mint_rwt', {
       accounts: {
         authority: deployer.publicKey,
@@ -1480,16 +1486,12 @@ const dexStepExecutors: Record<string, StepExecutor> = {
       },
       args: {
         rwt_amount: rwtAmount,
-        backing_capital_usd: rwtAmount, // 1:1 backing for test
+        backing_capital_usd: rwtAmount,
       }
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    // confirmation handled by signAndSendTransaction (HTTP polling)
-
-    (ctx as any).rwtAta = rwtAta;
-    (ctx as any).usdcAta = usdcAta;
-    return { result: { rwtBalance: rwtAmount, usdcBalance: usdcAmount, rwtVia: 'admin_mint_rwt' } };
+    return { txSignature: sig, result: { rwtMinted: rwtAmount } };
   },
 
   'dex-add-first-lp': async (ctx, deployer) => {
