@@ -6,7 +6,7 @@ import {
 
 /**
  * Sign, send, and confirm a transaction using HTTP polling (no WebSocket needed).
- * Returns the transaction signature.
+ * Resends transaction periodically until confirmed or expired.
  */
 export async function signAndSendTransaction(
   connection: Connection,
@@ -26,35 +26,23 @@ export async function signAndSendTransaction(
 
   const rawTx = transaction.serialize();
 
-  console.log('[tx] sending transaction...');
+  console.log('[tx] sending...');
   const signature = await connection.sendRawTransaction(rawTx, {
-    skipPreflight: true,
+    skipPreflight: false,
     preflightCommitment: 'confirmed',
+    maxRetries: 0, // we handle retries ourselves
   });
-  console.log('[tx] sent:', signature);
+  console.log('[tx] sent:', signature.slice(0, 20) + '...');
 
-  // Poll for confirmation instead of using WebSocket
-  await pollConfirmation(connection, signature, lastValidBlockHeight);
-  console.log('[tx] confirmed:', signature);
-
-  return signature;
-}
-
-/**
- * Poll getSignatureStatuses until confirmed or expired.
- */
-async function pollConfirmation(
-  connection: Connection,
-  signature: string,
-  lastValidBlockHeight: number,
-  intervalMs = 2000,
-  timeoutMs = 120000,
-): Promise<void> {
-  const start = Date.now();
+  // Poll + resend loop
+  const startMs = Date.now();
+  const timeoutMs = 120_000;
   let attempt = 0;
+  let lastSendMs = Date.now();
 
-  while (Date.now() - start < timeoutMs) {
+  while (Date.now() - startMs < timeoutMs) {
     attempt++;
+
     try {
       const { value } = await connection.getSignatureStatuses([signature]);
       const status = value?.[0];
@@ -64,27 +52,42 @@ async function pollConfirmation(
           throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
         }
         if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
-          return;
-        }
-      }
-
-      // Check if blockhash expired (every 5th attempt to reduce RPC calls)
-      if (attempt % 5 === 0) {
-        const blockHeight = await connection.getBlockHeight('confirmed');
-        if (blockHeight > lastValidBlockHeight) {
-          throw new Error('Transaction expired: block height exceeded');
+          console.log('[tx] confirmed in', ((Date.now() - startMs) / 1000).toFixed(1) + 's');
+          return signature;
         }
       }
     } catch (e: any) {
-      // If it's our own error, rethrow
-      if (e.message?.includes('Transaction failed') || e.message?.includes('Transaction expired')) {
-        throw e;
-      }
-      // Otherwise RPC error — retry
-      console.warn(`[tx] poll attempt ${attempt} failed:`, e.message);
+      if (e.message?.includes('Transaction failed')) throw e;
+      // RPC error — continue polling
     }
 
-    await new Promise(r => setTimeout(r, intervalMs));
+    // Resend every 5 seconds to combat dropped transactions
+    if (Date.now() - lastSendMs > 5000) {
+      try {
+        await connection.sendRawTransaction(rawTx, {
+          skipPreflight: true,
+          maxRetries: 0,
+        });
+        lastSendMs = Date.now();
+        console.log('[tx] resent at attempt', attempt);
+      } catch {
+        // ignore resend errors
+      }
+    }
+
+    // Check block height every 10th attempt
+    if (attempt % 10 === 0) {
+      try {
+        const currentHeight = await connection.getBlockHeight('confirmed');
+        if (currentHeight > lastValidBlockHeight) {
+          throw new Error('Transaction expired: block height exceeded');
+        }
+      } catch (e: any) {
+        if (e.message?.includes('expired')) throw e;
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 1500));
   }
 
   throw new Error(`Transaction confirmation timeout after ${timeoutMs}ms`);
