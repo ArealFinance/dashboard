@@ -1346,6 +1346,14 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     const [configPda] = findDexConfigPda(dexProgramId);
     const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
 
+    // Idempotent: skip if already initialized
+    const existing = await conn.getAccountInfo(configPda);
+    if (existing) {
+      return {
+        result: { dexConfig: configPda.toBase58(), poolCreators: creatorsPda.toBase58(), skipped: 'already initialized' }
+      };
+    }
+
     const tx = client.buildTransaction('initialize_dex', {
       accounts: {
         deployer: deployer.publicKey,
@@ -1381,6 +1389,22 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     const [configPda] = findDexConfigPda(dexProgramId);
     const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
     const [poolPda] = findPoolStatePda(mintA, mintB, dexProgramId);
+
+    // Idempotent: skip if pool already exists
+    const existing = await conn.getAccountInfo(poolPda);
+    if (existing) {
+      // Read vault addresses from existing pool state (offset 8+1+32+32 = 73 for vault_a, 105 for vault_b)
+      const vaultABytes = existing.data.slice(73, 105);
+      const vaultBBytes = existing.data.slice(105, 137);
+      (ctx as any).poolPda = poolPda;
+      (ctx as any).mintA = mintA;
+      (ctx as any).mintB = mintB;
+      (ctx as any).vaultA = new PublicKey(vaultABytes);
+      (ctx as any).vaultB = new PublicKey(vaultBBytes);
+      return {
+        result: { pool: poolPda.toBase58(), mintA: mintA.toBase58(), mintB: mintB.toBase58(), skipped: 'already exists' }
+      };
+    }
 
     const vaultA = Keypair.generate();
     const vaultB = Keypair.generate();
