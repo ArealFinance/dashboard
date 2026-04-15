@@ -18,7 +18,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID
 } from '$lib/utils/pda';
-import { dexClient, dexProgramId } from './dex';
+// dexClient and dexProgramId imported dynamically in DEX executors to avoid circular deps
 import { createMint, createAta, mintTo, getTokenBalance, getMintInfo, getAtaAddress } from '$lib/utils/spl';
 import { signAndSendTransaction } from '$lib/utils/tx';
 import { stringToFixedBytes, bytesToBase58 } from '$lib/utils/format';
@@ -1326,6 +1326,11 @@ function createDexE2ESteps(): E2EStep[] {
   ];
 }
 
+async function getDex() {
+  const { dexClient, dexProgramId } = await import('./dex');
+  return { client: get(dexClient), programId: dexProgramId };
+}
+
 const dexStepExecutors: Record<string, StepExecutor> = {
   'dex-create-rwt-mint': async (ctx, deployer) => {
     // Use the REAL deployed RWT_MINT — contract enforces one mint must be RWT_MINT.
@@ -1362,7 +1367,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
   'dex-init': async (ctx, deployer) => {
     const conn = get(connection);
-    const client = get(dexClient);
+    const { client, programId: dexProgramId } = await getDex();
     const [configPda] = findDexConfigPda(dexProgramId);
     const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
 
@@ -1398,7 +1403,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
   'dex-create-pool': async (ctx, deployer) => {
     const conn = get(connection);
-    const client = get(dexClient);
+    const { client, programId: dexProgramId } = await getDex();
     const rwtMint = (ctx as any).rwtMint as PublicKey;
     const usdcMint = (ctx as any).testUsdc as PublicKey;
 
@@ -1524,7 +1529,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
   'dex-add-first-lp': async (ctx, deployer) => {
     const conn = get(connection);
-    const client = get(dexClient);
+    const { client, programId: dexProgramId } = await getDex();
     const poolPda = (ctx as any).poolPda as PublicKey;
     const mintA = (ctx as any).mintA as PublicKey;
     const mintB = (ctx as any).mintB as PublicKey;
@@ -1563,7 +1568,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
   'dex-add-second-lp': async (ctx, deployer) => {
     const conn = get(connection);
-    const client = get(dexClient);
+    const { client, programId: dexProgramId } = await getDex();
     const poolPda = (ctx as any).poolPda as PublicKey;
     const mintA = (ctx as any).mintA as PublicKey;
     const mintB = (ctx as any).mintB as PublicKey;
@@ -1594,7 +1599,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
   'dex-swap-a-to-b': async (ctx, deployer) => {
     const conn = get(connection);
-    const client = get(dexClient);
+    const { client, programId: dexProgramId } = await getDex();
     const poolPda = (ctx as any).poolPda as PublicKey;
     const mintA = (ctx as any).mintA as PublicKey;
     const mintB = (ctx as any).mintB as PublicKey;
@@ -1626,7 +1631,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
   'dex-swap-b-to-a': async (ctx, deployer) => {
     const conn = get(connection);
-    const client = get(dexClient);
+    const { client, programId: dexProgramId } = await getDex();
     const poolPda = (ctx as any).poolPda as PublicKey;
     const mintA = (ctx as any).mintA as PublicKey;
     const mintB = (ctx as any).mintB as PublicKey;
@@ -1656,7 +1661,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
   'dex-remove-lp': async (ctx, deployer) => {
     const conn = get(connection);
-    const client = get(dexClient);
+    const { client, programId: dexProgramId } = await getDex();
     const poolPda = (ctx as any).poolPda as PublicKey;
     const mintA = (ctx as any).mintA as PublicKey;
     const mintB = (ctx as any).mintB as PublicKey;
