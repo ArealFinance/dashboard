@@ -1376,7 +1376,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    await conn.confirmTransaction(sig, 'confirmed');
+    // confirmation handled by signAndSendTransaction (HTTP polling)
     return {
       txSignature: sig,
       result: { dexConfig: configPda.toBase58(), poolCreators: creatorsPda.toBase58() }
@@ -1433,7 +1433,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer, vaultA, vaultB]);
-    await conn.confirmTransaction(sig, 'confirmed');
+    // confirmation handled by signAndSendTransaction (HTTP polling)
 
     (ctx as any).poolPda = poolPda;
     (ctx as any).mintA = mintA;
@@ -1485,7 +1485,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    await conn.confirmTransaction(sig, 'confirmed');
+    // confirmation handled by signAndSendTransaction (HTTP polling)
 
     (ctx as any).rwtAta = rwtAta;
     (ctx as any).usdcAta = usdcAta;
@@ -1522,7 +1522,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    await conn.confirmTransaction(sig, 'confirmed');
+    // confirmation handled by signAndSendTransaction (HTTP polling)
 
     // sqrt(100M * 100M) = 100M, user gets 100M - 1000 = 99,999,000
     return {
@@ -1558,7 +1558,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    await conn.confirmTransaction(sig, 'confirmed');
+    // confirmation handled by signAndSendTransaction (HTTP polling)
     return { txSignature: sig, result: { action: 'proportional add' } };
   },
 
@@ -1590,7 +1590,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    await conn.confirmTransaction(sig, 'confirmed');
+    // confirmation handled by signAndSendTransaction (HTTP polling)
     return { txSignature: sig, result: { direction: 'A→B', amountIn: 10_000_000 } };
   },
 
@@ -1620,7 +1620,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    await conn.confirmTransaction(sig, 'confirmed');
+    // confirmation handled by signAndSendTransaction (HTTP polling)
     return { txSignature: sig, result: { direction: 'B→A', amountIn: 5_000_000 } };
   },
 
@@ -1650,7 +1650,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
-    await conn.confirmTransaction(sig, 'confirmed');
+    // confirmation handled by signAndSendTransaction (HTTP polling)
     return { txSignature: sig, result: { sharesBurned: sharesToBurn } };
   },
 };
