@@ -1469,9 +1469,9 @@ const dexStepExecutors: Record<string, StepExecutor> = {
   'dex-mint-usdc': async (ctx, deployer) => {
     const conn = get(connection);
     const usdcMint = (ctx as any).testUsdc as PublicKey;
-    const usdcKeypair = (ctx as any).testUsdcKeypair as Keypair;
     const usdcAta = (ctx as any).usdcAta as PublicKey;
-    await mintTo(conn, usdcKeypair, usdcMint, usdcAta, 2_000_000_000);
+    // deployer is mint authority (createMint uses payer as authority by default)
+    await mintTo(conn, deployer, usdcMint, usdcAta, 2_000_000_000);
     return { result: { usdcMinted: 2_000_000_000 } };
   },
 

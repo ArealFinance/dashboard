@@ -110,7 +110,8 @@ export async function mintTo(
   mintAuthority: Keypair,
   mint: PublicKey,
   destination: PublicKey,
-  amount: bigint | number
+  amount: bigint | number,
+  payer?: Keypair
 ): Promise<string> {
   const data = Buffer.alloc(9);
   data.writeUInt8(7, 0);
@@ -127,7 +128,9 @@ export async function mintTo(
   });
 
   const tx = new Transaction().add(ix);
-  return await signAndSendTransaction(connection, tx, [mintAuthority]);
+  // payer first (fee payer), then mintAuthority as additional signer
+  const signers = payer ? [payer, mintAuthority] : [mintAuthority];
+  return await signAndSendTransaction(connection, tx, signers);
 }
 
 /**
