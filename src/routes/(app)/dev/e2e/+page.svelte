@@ -12,6 +12,20 @@
   let runError = '';
   let expandedSteps: Record<string, boolean> = {};
 
+  // Scenario selection
+  $: availableScenarios = e2eRunner.scenarios;
+  let selectedScenarioId = '';
+  $: if (!selectedScenarioId && availableScenarios.length > 0) {
+    selectedScenarioId = availableScenarios[0].id;
+  }
+
+  function handleSelectScenario(id: string) {
+    selectedScenarioId = id;
+    e2eRunner.selectScenario(id);
+    expandedSteps = {};
+    runError = '';
+  }
+
   $: scenario = $e2eRunner;
   $: info = $activeKeypairInfo;
   $: passCount = scenario.steps.filter(s => s.status === 'success').length;
@@ -100,6 +114,22 @@
       </div>
     </div>
   </section>
+
+  <!-- Scenario Selector -->
+  {#if availableScenarios.length > 1}
+    <div class="scenario-tabs">
+      {#each availableScenarios as s}
+        <button
+          class="scenario-tab"
+          class:active={selectedScenarioId === s.id}
+          on:click={() => handleSelectScenario(s.id)}
+          disabled={running}
+        >
+          {s.name}
+        </button>
+      {/each}
+    </div>
+  {/if}
 
   <!-- Controls -->
   <section class="card">
@@ -266,6 +296,43 @@
   .page-header h1 {
     font-size: var(--text-2xl);
     font-weight: 700;
+  }
+
+  .scenario-tabs {
+    display: flex;
+    gap: var(--space-1);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 4px;
+  }
+
+  .scenario-tab {
+    flex: 1;
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    background: none;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .scenario-tab:hover:not(:disabled) {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+
+  .scenario-tab.active {
+    background: var(--color-primary);
+    color: white;
+  }
+
+  .scenario-tab:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .card {
