@@ -51,6 +51,6 @@ export const connection = derived(rpcEndpoint, ($rpcEndpoint) => {
   return new Connection($rpcEndpoint, {
     commitment: 'confirmed',
     wsEndpoint: false as any,        // disable WebSocket — use HTTP polling only
-    confirmTransactionInitialTimeout: 30000,
+    confirmTransactionInitialTimeout: 120000,
   });
 });
