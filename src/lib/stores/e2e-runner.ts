@@ -1502,8 +1502,10 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     const { rwtClient: rwtClientStore, rwtProgramId } = await import('./rwt');
     const rwtClient = get(rwtClientStore);
 
-    // Areal fee destination = deployer's USDC ATA (for test)
-    const arealFeeAta = getAtaAddress(deployer.publicKey, (ctx as any).testUsdc);
+    // Read areal_fee_destination from vault state (offset 234..266)
+    const vaultInfo = await conn.getAccountInfo(vaultPda);
+    if (!vaultInfo) throw new Error('RWT Vault not found');
+    const arealFeeAta = new PublicKey(vaultInfo.data.slice(234, 266));
 
     const depositAmount = 1_000_000_000; // 1000 USDC
     const tx = rwtClient.buildTransaction('mint_rwt', {
