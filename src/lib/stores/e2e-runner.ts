@@ -1315,7 +1315,8 @@ function createDexE2ESteps(): E2EStep[] {
     { id: 'dex-init', name: 'Initialize DEX', description: 'Create DexConfig + PoolCreators PDAs', status: 'pending' },
     { id: 'dex-create-pool', name: 'Create RWT/USDC Pool', description: 'StandardCurve pool with canonical mint ordering', status: 'pending' },
     { id: 'dex-create-rwt-ata', name: 'Create RWT ATA', description: 'Create deployer RWT token account', status: 'pending' },
-    { id: 'dex-create-usdc-ata', name: 'Create USDC ATA + Mint', description: 'Create deployer USDC token account and mint test USDC', status: 'pending' },
+    { id: 'dex-create-usdc-ata', name: 'Create USDC ATA', description: 'Create deployer USDC token account', status: 'pending' },
+    { id: 'dex-mint-usdc', name: 'Mint Test USDC', description: 'Mint 2000 test USDC to deployer', status: 'pending' },
     { id: 'dex-mint-rwt', name: 'Admin Mint RWT', description: 'Mint RWT via admin_mint_rwt on RWT Engine', status: 'pending' },
     { id: 'dex-add-first-lp', name: 'Add First Liquidity', description: 'First LP deposit — verify sqrt shares and MIN_LIQUIDITY burn', status: 'pending' },
     { id: 'dex-add-second-lp', name: 'Add Second Liquidity', description: 'Proportional LP deposit — verify shares calculation', status: 'pending' },
@@ -1460,11 +1461,18 @@ const dexStepExecutors: Record<string, StepExecutor> = {
   'dex-create-usdc-ata': async (ctx, deployer) => {
     const conn = get(connection);
     const usdcMint = (ctx as any).testUsdc as PublicKey;
-    const usdcKeypair = (ctx as any).testUsdcKeypair as Keypair;
     const usdcAta = await createAta(conn, deployer, usdcMint, deployer.publicKey);
-    await mintTo(conn, usdcKeypair, usdcMint, usdcAta, 2_000_000_000);
     (ctx as any).usdcAta = usdcAta;
-    return { result: { usdcAta: usdcAta.toBase58(), usdcMinted: 2_000_000_000 } };
+    return { result: { usdcAta: usdcAta.toBase58() } };
+  },
+
+  'dex-mint-usdc': async (ctx, deployer) => {
+    const conn = get(connection);
+    const usdcMint = (ctx as any).testUsdc as PublicKey;
+    const usdcKeypair = (ctx as any).testUsdcKeypair as Keypair;
+    const usdcAta = (ctx as any).usdcAta as PublicKey;
+    await mintTo(conn, usdcKeypair, usdcMint, usdcAta, 2_000_000_000);
+    return { result: { usdcMinted: 2_000_000_000 } };
   },
 
   'dex-mint-rwt': async (ctx, deployer) => {
