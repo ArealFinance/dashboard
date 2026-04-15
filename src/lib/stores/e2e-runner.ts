@@ -1736,6 +1736,7 @@ function createE2ERunnerStore() {
       if (!deployer) {
         throw new Error('No active dev keypair. Generate or import one first.');
       }
+      console.log('[e2e] deployer:', deployer.publicKey.toBase58());
 
       const id = get(selectedId);
       const def = SCENARIOS.find(s => s.id === id) ?? SCENARIOS[0];

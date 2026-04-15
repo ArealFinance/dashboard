@@ -5,6 +5,7 @@ import { browser } from '$app/environment';
 import bs58 from 'bs58';
 
 const STORAGE_KEY = 'areal_dev_keypairs';
+const ACTIVE_KEY = 'areal_dev_active';
 
 /**
  * Stored keypair (serializable to localStorage)
@@ -37,6 +38,20 @@ function saveKeypairs(keypairs: StoredKeypair[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(keypairs));
 }
 
+function loadActiveName(): string | null {
+  if (!browser) return null;
+  return localStorage.getItem(ACTIVE_KEY) || null;
+}
+
+function saveActiveName(name: string | null) {
+  if (!browser) return;
+  if (name) {
+    localStorage.setItem(ACTIVE_KEY, name);
+  } else {
+    localStorage.removeItem(ACTIVE_KEY);
+  }
+}
+
 function createDevKeypairStore() {
   const keypairs = writable<StoredKeypair[]>(loadKeypairs());
   const activeName = writable<string | null>(null);
@@ -44,11 +59,15 @@ function createDevKeypairStore() {
 
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Initialize active keypair from first stored keypair
+  // Initialize active keypair — prefer persisted active, fallback to first stored
   if (browser) {
     const stored = loadKeypairs();
-    if (stored.length > 0) {
+    const persisted = loadActiveName();
+    if (persisted && stored.some(k => k.name === persisted)) {
+      activeName.set(persisted);
+    } else if (stored.length > 0) {
       activeName.set(stored[0].name);
+      saveActiveName(stored[0].name);
     }
   }
 
@@ -110,7 +129,11 @@ function createDevKeypairStore() {
       };
 
       keypairs.update(arr => {
-        // Prevent duplicate names
+        // Prevent duplicate names — WARNING: this replaces the keypair!
+        const existing = arr.find(k => k.name === name);
+        if (existing) {
+          console.warn(`[devkeys] Replacing existing keypair "${name}" (${existing.publicKey}) with new one (${stored.publicKey})`);
+        }
         const filtered = arr.filter(k => k.name !== name);
         const next = [...filtered, stored];
         saveKeypairs(next);
@@ -121,6 +144,7 @@ function createDevKeypairStore() {
       const current = get(activeName);
       if (!current) {
         activeName.set(name);
+        saveActiveName(name);
       }
 
       startPolling();
@@ -145,6 +169,7 @@ function createDevKeypairStore() {
       const current = get(activeName);
       if (!current) {
         activeName.set(name);
+        saveActiveName(name);
       }
 
       startPolling();
@@ -161,12 +186,15 @@ function createDevKeypairStore() {
 
       if (get(activeName) === name) {
         const remaining = get(keypairs);
-        activeName.set(remaining.length > 0 ? remaining[0].name : null);
+        const newActive = remaining.length > 0 ? remaining[0].name : null;
+        activeName.set(newActive);
+        saveActiveName(newActive);
       }
     },
 
     setActive(name: string) {
       activeName.set(name);
+      saveActiveName(name);
     },
 
     getKeypair(name: string): Keypair | null {
