@@ -16,6 +16,7 @@ export interface ProtocolProgram {
   idlPath: string | null;
   instructions: number;
   description: string;
+  binaryName?: string;
 }
 
 /**
@@ -44,7 +45,8 @@ export const PROTOCOL_PROGRAMS: ProtocolProgram[] = [
     layer: '1',
     idlPath: '$lib/idl/ownership-token.json',
     instructions: 7,
-    description: 'Tokenized ownership, revenue distribution, treasury management'
+    description: 'Tokenized ownership, revenue distribution, treasury management',
+    binaryName: 'ownership_token'
   },
   {
     id: 'futarchy',
@@ -64,7 +66,8 @@ export const PROTOCOL_PROGRAMS: ProtocolProgram[] = [
     layer: '3',
     idlPath: '$lib/idl/rwt-engine.json',
     instructions: 10,
-    description: 'Reward token minting, NAV pricing, vault management'
+    description: 'Reward token minting, NAV pricing, vault management',
+    binaryName: 'rwt_engine'
   },
   {
     id: 'dex',
@@ -74,7 +77,8 @@ export const PROTOCOL_PROGRAMS: ProtocolProgram[] = [
     layer: '4-5',
     idlPath: '$lib/idl/native-dex.json',
     instructions: 12,
-    description: 'StandardCurve AMM pools, swaps, LP management'
+    description: 'StandardCurve AMM pools, swaps, LP management',
+    binaryName: 'native_dex'
   },
   {
     id: 'yd',

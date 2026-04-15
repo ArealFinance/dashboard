@@ -70,7 +70,8 @@
   }
 
   function getDeployCommand(prog: typeof PROTOCOL_PROGRAMS[0]): string {
-    return `solana program deploy target/deploy/${prog.id.replace('-', '_')}.so --program-id ${prog.programId ?? '<KEYPAIR>'}`;
+    const binary = prog.binaryName ?? prog.id.replace('-', '_');
+    return `solana program deploy target/deploy/${binary}.so --program-id ${prog.programId ?? '<KEYPAIR>'}`;
   }
 
   function getResetCommand(): string {
