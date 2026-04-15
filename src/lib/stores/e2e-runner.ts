@@ -1379,6 +1379,10 @@ const dexStepExecutors: Record<string, StepExecutor> = {
       };
     }
 
+    // Fee destination must be an SPL token account (RWT ATA for deployer)
+    const rwtMint = (ctx as any).rwtMint as PublicKey;
+    const feeAta = await createAta(conn, deployer, rwtMint, deployer.publicKey);
+
     const tx = client.buildTransaction('initialize_dex', {
       accounts: {
         deployer: deployer.publicKey,
@@ -1387,7 +1391,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: {
-        areal_fee_destination: Array.from(deployer.publicKey.toBytes()),
+        areal_fee_destination: Array.from(feeAta.toBytes()),
         pause_authority: Array.from(deployer.publicKey.toBytes()),
         rebalancer: Array.from(deployer.publicKey.toBytes()),
       }
