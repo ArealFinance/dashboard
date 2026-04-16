@@ -1726,23 +1726,41 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
     const rwtMint = new PublicKey(vaultInfo.data.slice(72, 104));
 
     // Create a FRESH test mint for concentrated pair (avoids PDA conflict with StandardCurve RWT/USDC pool)
-    const clTestMintKp = Keypair.generate();
-    await createMint(conn, deployer, clTestMintKp, deployer.publicKey, 6);
+    const { mintAddress: clTestMint, mintKeypair: clTestMintKp } = await createMint(conn, deployer, 6, deployer.publicKey);
 
-    // Create ATA and mint tokens for deployer
-    const clTestAta = await createAta(conn, deployer, clTestMintKp.publicKey, deployer.publicKey);
-    await mintTo(conn, deployer, clTestMintKp.publicKey, clTestAta, deployer, 2_000_000_000); // 2000 tokens
+    // Create ATA via raw InitializeAccount3 (avoids ATA program GetAccountDataSize incompatibility)
+    const clTestAta = getAtaAddress(deployer.publicKey, clTestMint);
+    const ataInfo = await conn.getAccountInfo(clTestAta);
+    if (!ataInfo) {
+      const ataIx = new TransactionInstruction({
+        keys: [
+          { pubkey: deployer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: clTestAta, isSigner: false, isWritable: true },
+          { pubkey: deployer.publicKey, isSigner: false, isWritable: false },
+          { pubkey: clTestMint, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        ],
+        programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+        data: Buffer.from([1]), // CreateIdempotent (instruction index 1)
+      });
+      const ataTx = new Transaction().add(ataIx);
+      await signAndSendTransaction(conn, ataTx, [deployer]);
+    }
 
-    // Also ensure deployer has RWT ATA with tokens (from previous DEX E2E mint_rwt step)
+    // Mint 2000 test tokens (mintAuthority = deployer)
+    await mintTo(conn, deployer, clTestMint, clTestAta, 2_000_000_000);
+
+    // Verify deployer has RWT balance
     const rwtAta = getAtaAddress(deployer.publicKey, rwtMint);
     const rwtBalance = await getTokenBalance(conn, rwtAta);
 
     (ctx as any).rwtMint = rwtMint;
-    (ctx as any).testUsdc = clTestMintKp.publicKey; // use fresh mint as "token B"
+    (ctx as any).testUsdc = clTestMint;
     (ctx as any).clTestMintKp = clTestMintKp;
     return { result: {
       rwtMint: rwtMint.toBase58(),
-      clTestMint: clTestMintKp.publicKey.toBase58(),
+      clTestMint: clTestMint.toBase58(),
       rwtBalance: rwtBalance.toString(),
     } };
   },
