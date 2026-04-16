@@ -1703,7 +1703,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
 
 function createConcentratedE2ESteps(): E2EStep[] {
   return [
-    { id: 'cl-load-mints', name: 'Load RWT & USDC Mints', description: 'Read deployed mints from RWT Vault (requires DEX E2E run first)', status: 'pending' },
+    { id: 'cl-load-mints', name: 'Load RWT & Create Test Mint', description: 'Read RWT from vault, create fresh test mint for CL pair (avoids StandardCurve PDA conflict)', status: 'pending' },
     { id: 'cl-create-pool', name: 'Create Concentrated Pool', description: 'Create CL pool with bin_step=10, initial_bin=0', status: 'pending' },
     { id: 'cl-add-liquidity', name: 'Add First Liquidity', description: 'Add LP — verify bins distributed uniformly', status: 'pending' },
     { id: 'cl-swap-a-to-b', name: 'Swap RWT → USDC (Bin Walk)', description: 'Sell RWT — verify bin walk and active_bin movement', status: 'pending' },
@@ -1717,19 +1717,34 @@ function createConcentratedE2ESteps(): E2EStep[] {
 const concentratedStepExecutors: Record<string, StepExecutor> = {
   'cl-load-mints': async (ctx, deployer) => {
     const conn = get(connection);
+    // Load RWT mint from vault
     const { rwtProgramId: rwtProgId } = await import('./rwt');
     const { findRwtVaultPda } = await import('$lib/utils/pda');
     const [vaultPda] = findRwtVaultPda(rwtProgId);
     const vaultInfo = await conn.getAccountInfo(vaultPda);
     if (!vaultInfo) throw new Error('RWT Vault not found — run RWT E2E first');
     const rwtMint = new PublicKey(vaultInfo.data.slice(72, 104));
-    const capitalAta = new PublicKey(vaultInfo.data.slice(40, 72));
-    const ataInfo = await conn.getAccountInfo(capitalAta);
-    if (!ataInfo) throw new Error('Capital ATA not found');
-    const usdcMint = new PublicKey(ataInfo.data.slice(0, 32));
+
+    // Create a FRESH test mint for concentrated pair (avoids PDA conflict with StandardCurve RWT/USDC pool)
+    const clTestMintKp = Keypair.generate();
+    await createMint(conn, deployer, clTestMintKp, deployer.publicKey, 6);
+
+    // Create ATA and mint tokens for deployer
+    const clTestAta = await createAta(conn, deployer, clTestMintKp.publicKey, deployer.publicKey);
+    await mintTo(conn, deployer, clTestMintKp.publicKey, clTestAta, deployer, 2_000_000_000); // 2000 tokens
+
+    // Also ensure deployer has RWT ATA with tokens (from previous DEX E2E mint_rwt step)
+    const rwtAta = getAtaAddress(deployer.publicKey, rwtMint);
+    const rwtBalance = await getTokenBalance(conn, rwtAta);
+
     (ctx as any).rwtMint = rwtMint;
-    (ctx as any).testUsdc = usdcMint;
-    return { result: { rwtMint: rwtMint.toBase58(), usdcMint: usdcMint.toBase58() } };
+    (ctx as any).testUsdc = clTestMintKp.publicKey; // use fresh mint as "token B"
+    (ctx as any).clTestMintKp = clTestMintKp;
+    return { result: {
+      rwtMint: rwtMint.toBase58(),
+      clTestMint: clTestMintKp.publicKey.toBase58(),
+      rwtBalance: rwtBalance.toString(),
+    } };
   },
 
   'cl-create-pool': async (ctx, deployer) => {
