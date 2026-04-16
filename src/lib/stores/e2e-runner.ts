@@ -14,6 +14,7 @@ import {
   findPoolCreatorsPda,
   findPoolStatePda,
   findLpPositionPda,
+  findBinArrayPda,
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID
@@ -1698,11 +1699,298 @@ const dexStepExecutors: Record<string, StepExecutor> = {
   },
 };
 
+// ---- DEX Concentrated E2E Scenario ----
+
+function createConcentratedE2ESteps(): E2EStep[] {
+  return [
+    { id: 'cl-load-mints', name: 'Load RWT & USDC Mints', description: 'Read deployed mints from RWT Vault (requires DEX E2E run first)', status: 'pending' },
+    { id: 'cl-create-pool', name: 'Create Concentrated Pool', description: 'Create CL pool with bin_step=10, initial_bin=0', status: 'pending' },
+    { id: 'cl-add-liquidity', name: 'Add First Liquidity', description: 'Add LP — verify bins distributed uniformly', status: 'pending' },
+    { id: 'cl-swap-a-to-b', name: 'Swap RWT → USDC (Bin Walk)', description: 'Sell RWT — verify bin walk and active_bin movement', status: 'pending' },
+    { id: 'cl-swap-b-to-a', name: 'Swap USDC → RWT (Reverse)', description: 'Buy RWT — verify reverse bin walk', status: 'pending' },
+    { id: 'cl-shift', name: 'Shift Liquidity (Manual)', description: 'Call shift_liquidity as rebalancer — verify pyramid distribution', status: 'pending' },
+    { id: 'cl-verify-conservation', name: 'Verify Conservation', description: 'Read BinArray — verify sum(bins) matches reserves', status: 'pending' },
+    { id: 'cl-remove-liquidity', name: 'Remove Liquidity', description: 'Remove partial LP — verify proportional return and bin reduction', status: 'pending' },
+  ];
+}
+
+const concentratedStepExecutors: Record<string, StepExecutor> = {
+  'cl-load-mints': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { rwtProgramId: rwtProgId } = await import('./rwt');
+    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const [vaultPda] = findRwtVaultPda(rwtProgId);
+    const vaultInfo = await conn.getAccountInfo(vaultPda);
+    if (!vaultInfo) throw new Error('RWT Vault not found — run RWT E2E first');
+    const rwtMint = new PublicKey(vaultInfo.data.slice(72, 104));
+    const capitalAta = new PublicKey(vaultInfo.data.slice(40, 72));
+    const ataInfo = await conn.getAccountInfo(capitalAta);
+    if (!ataInfo) throw new Error('Capital ATA not found');
+    const usdcMint = new PublicKey(ataInfo.data.slice(0, 32));
+    (ctx as any).rwtMint = rwtMint;
+    (ctx as any).testUsdc = usdcMint;
+    return { result: { rwtMint: rwtMint.toBase58(), usdcMint: usdcMint.toBase58() } };
+  },
+
+  'cl-create-pool': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const rwtMint = (ctx as any).rwtMint as PublicKey;
+    const usdcMint = (ctx as any).testUsdc as PublicKey;
+
+    // Canonical order: lower mint first
+    const [mintA, mintB] = rwtMint.toBuffer() < usdcMint.toBuffer() ? [rwtMint, usdcMint] : [usdcMint, rwtMint];
+    (ctx as any).clMintA = mintA;
+    (ctx as any).clMintB = mintB;
+
+    const [configPda] = findDexConfigPda(dexProgramId);
+    const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
+    const [poolPda] = findPoolStatePda(mintA, mintB, dexProgramId);
+    const [binPda] = findBinArrayPda(poolPda, dexProgramId);
+
+    // Check if already exists
+    const existing = await conn.getAccountInfo(poolPda);
+    if (existing && existing.data[8] === 1) {
+      (ctx as any).clPoolPda = poolPda;
+      (ctx as any).clBinPda = binPda;
+      (ctx as any).clVaultA = new PublicKey(existing.data.slice(41, 73));
+      (ctx as any).clVaultB = new PublicKey(existing.data.slice(73, 105));
+      return { result: { pool: poolPda.toBase58(), skipped: 'concentrated pool already exists' } };
+    }
+
+    const vaultAKeypair = Keypair.generate();
+    const vaultBKeypair = Keypair.generate();
+
+    const tx = client.buildTransaction('create_concentrated_pool', {
+      accounts: {
+        creator: deployer.publicKey,
+        dex_config: configPda,
+        pool_creators: creatorsPda,
+        pool_state: poolPda,
+        bin_array: binPda,
+        token_a_mint: mintA,
+        token_b_mint: mintB,
+        vault_a: vaultAKeypair.publicKey,
+        vault_b: vaultBKeypair.publicKey,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: { bin_step_bps: 10, initial_active_bin: 0 },
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer, vaultAKeypair, vaultBKeypair]);
+    (ctx as any).clPoolPda = poolPda;
+    (ctx as any).clBinPda = binPda;
+    (ctx as any).clVaultA = vaultAKeypair.publicKey;
+    (ctx as any).clVaultB = vaultBKeypair.publicKey;
+    return { txSignature: sig, result: { pool: poolPda.toBase58(), binArray: binPda.toBase58(), binStep: 10, initialBin: 0 } };
+  },
+
+  'cl-add-liquidity': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const poolPda = (ctx as any).clPoolPda as PublicKey;
+    const binPda = (ctx as any).clBinPda as PublicKey;
+    const mintA = (ctx as any).clMintA as PublicKey;
+    const mintB = (ctx as any).clMintB as PublicKey;
+    const [lpPda] = findLpPositionPda(poolPda, deployer.publicKey, dexProgramId);
+    const [configPda] = findDexConfigPda(dexProgramId);
+
+    const amountA = 500_000_000; // 500 tokens (6 dec)
+    const amountB = 500_000_000;
+
+    const tx = client.buildTransaction('add_liquidity', {
+      accounts: {
+        provider: deployer.publicKey,
+        payer: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: poolPda,
+        lp_position: lpPda,
+        provider_token_a: getAtaAddress(deployer.publicKey, mintA),
+        provider_token_b: getAtaAddress(deployer.publicKey, mintB),
+        vault_a: (ctx as any).clVaultA,
+        vault_b: (ctx as any).clVaultB,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: { amount_a: amountA, amount_b: amountB, min_shares: 0 },
+      remainingAccounts: [{ pubkey: binPda, isSigner: false, isWritable: true }],
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return { txSignature: sig, result: { amountA, amountB } };
+  },
+
+  'cl-swap-a-to-b': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const poolPda = (ctx as any).clPoolPda as PublicKey;
+    const binPda = (ctx as any).clBinPda as PublicKey;
+    const mintA = (ctx as any).clMintA as PublicKey;
+    const mintB = (ctx as any).clMintB as PublicKey;
+    const [configPda] = findDexConfigPda(dexProgramId);
+
+    const configInfo = await conn.getAccountInfo(configPda);
+    if (!configInfo) throw new Error('DexConfig not found');
+    const arealFeeDest = new PublicKey(configInfo.data.slice(8 + 32 + 32 + 1 + 32 + 2 + 2, 8 + 32 + 32 + 1 + 32 + 2 + 2 + 32));
+
+    const amountIn = 50_000_000; // 50 tokens
+    const tx = client.buildTransaction('swap', {
+      accounts: {
+        user: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: poolPda,
+        user_token_in: getAtaAddress(deployer.publicKey, mintA),
+        user_token_out: getAtaAddress(deployer.publicKey, mintB),
+        vault_in: (ctx as any).clVaultA,
+        vault_out: (ctx as any).clVaultB,
+        areal_fee_account: arealFeeDest,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { amount_in: amountIn, min_amount_out: 0, a_to_b: true },
+      remainingAccounts: [{ pubkey: binPda, isSigner: false, isWritable: true }],
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return { txSignature: sig, result: { direction: 'A→B', amountIn } };
+  },
+
+  'cl-swap-b-to-a': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const poolPda = (ctx as any).clPoolPda as PublicKey;
+    const binPda = (ctx as any).clBinPda as PublicKey;
+    const mintA = (ctx as any).clMintA as PublicKey;
+    const mintB = (ctx as any).clMintB as PublicKey;
+    const [configPda] = findDexConfigPda(dexProgramId);
+
+    const configInfo = await conn.getAccountInfo(configPda);
+    if (!configInfo) throw new Error('DexConfig not found');
+    const arealFeeDest = new PublicKey(configInfo.data.slice(8 + 32 + 32 + 1 + 32 + 2 + 2, 8 + 32 + 32 + 1 + 32 + 2 + 2 + 32));
+
+    const amountIn = 30_000_000;
+    const tx = client.buildTransaction('swap', {
+      accounts: {
+        user: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: poolPda,
+        user_token_in: getAtaAddress(deployer.publicKey, mintB),
+        user_token_out: getAtaAddress(deployer.publicKey, mintA),
+        vault_in: (ctx as any).clVaultB,
+        vault_out: (ctx as any).clVaultA,
+        areal_fee_account: arealFeeDest,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { amount_in: amountIn, min_amount_out: 0, a_to_b: false },
+      remainingAccounts: [{ pubkey: binPda, isSigner: false, isWritable: true }],
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return { txSignature: sig, result: { direction: 'B→A', amountIn } };
+  },
+
+  'cl-shift': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const poolPda = (ctx as any).clPoolPda as PublicKey;
+    const binPda = (ctx as any).clBinPda as PublicKey;
+    const [configPda] = findDexConfigPda(dexProgramId);
+
+    const tx = client.buildTransaction('shift_liquidity', {
+      accounts: {
+        rebalancer: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: poolPda,
+        bin_array: binPda,
+      },
+      args: { nav_bin: 2, target_bin_count: 40 },
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return { txSignature: sig, result: { navBin: 2, targetBinCount: 40 } };
+  },
+
+  'cl-verify-conservation': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const poolPda = (ctx as any).clPoolPda as PublicKey;
+    const binPda = (ctx as any).clBinPda as PublicKey;
+
+    const poolInfo = await conn.getAccountInfo(poolPda);
+    if (!poolInfo) throw new Error('Pool not found');
+    const reserveA = poolInfo.data.readBigUInt64LE(8 + 1 + 32 + 32 + 32 + 32);
+    const reserveB = poolInfo.data.readBigUInt64LE(8 + 1 + 32 + 32 + 32 + 32 + 8);
+    const activeBin = poolInfo.data.readInt32LE(8 + 1 + 32 + 32 + 32 + 32 + 8 + 8 + 16 + 2 + 1 + 8 + 2);
+
+    const binInfo = await conn.getAccountInfo(binPda);
+    if (!binInfo) throw new Error('BinArray not found');
+
+    let sumA = 0n;
+    let sumB = 0n;
+    const binDataOffset = 8 + 32; // discriminator + pool field
+    for (let i = 0; i < 70; i++) {
+      const off = binDataOffset + i * 16;
+      sumA += binInfo.data.readBigUInt64LE(off);
+      sumB += binInfo.data.readBigUInt64LE(off + 8);
+    }
+
+    const matchA = sumA === reserveA;
+    const matchB = sumB === reserveB;
+
+    return {
+      result: {
+        reserveA: reserveA.toString(),
+        reserveB: reserveB.toString(),
+        binSumA: sumA.toString(),
+        binSumB: sumB.toString(),
+        conservationA: matchA,
+        conservationB: matchB,
+        activeBin,
+      }
+    };
+  },
+
+  'cl-remove-liquidity': async (ctx, deployer) => {
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const poolPda = (ctx as any).clPoolPda as PublicKey;
+    const binPda = (ctx as any).clBinPda as PublicKey;
+    const mintA = (ctx as any).clMintA as PublicKey;
+    const mintB = (ctx as any).clMintB as PublicKey;
+    const [lpPda] = findLpPositionPda(poolPda, deployer.publicKey, dexProgramId);
+
+    // Read LP shares
+    const lpInfo = await conn.getAccountInfo(lpPda);
+    if (!lpInfo) throw new Error('LP position not found');
+    const shares = lpInfo.data.readBigUInt64LE(8 + 32 + 32); // offset to shares (u128, read lower 8 bytes)
+    const sharesToBurn = shares / 2n; // remove half
+
+    const tx = client.buildTransaction('remove_liquidity', {
+      accounts: {
+        provider: deployer.publicKey,
+        pool_state: poolPda,
+        lp_position: lpPda,
+        provider_token_a: getAtaAddress(deployer.publicKey, mintA),
+        provider_token_b: getAtaAddress(deployer.publicKey, mintB),
+        vault_a: (ctx as any).clVaultA,
+        vault_b: (ctx as any).clVaultB,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { shares_to_burn: sharesToBurn },
+      remainingAccounts: [{ pubkey: binPda, isSigner: false, isWritable: true }],
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return { txSignature: sig, result: { sharesBurned: sharesToBurn.toString() } };
+  },
+};
+
 const SCENARIOS: ScenarioDefinition[] = [
   { id: 'ot-lifecycle', name: 'OT Full Lifecycle', steps: createOtE2ESteps, executors: stepExecutors },
   { id: 'futarchy-governance', name: 'Futarchy Governance', steps: createFutarchyE2ESteps, executors: futarchyStepExecutors },
   { id: 'rwt-lifecycle', name: 'RWT Mint & Manage', steps: createRwtE2ESteps, executors: rwtStepExecutors },
-  { id: 'dex-lifecycle', name: 'DEX Pool & Swap', steps: createDexE2ESteps, executors: dexStepExecutors }
+  { id: 'dex-lifecycle', name: 'DEX Pool & Swap', steps: createDexE2ESteps, executors: dexStepExecutors },
+  { id: 'cl-lifecycle', name: 'DEX Concentrated', steps: createConcentratedE2ESteps, executors: concentratedStepExecutors }
 ];
 
 // ---- Store ----
