@@ -52,7 +52,8 @@
       ],
       "args": [
         { "name": "amount_a", "type": "u64" },
-        { "name": "amount_b", "type": "u64" }
+        { "name": "amount_b", "type": "u64" },
+        { "name": "min_shares", "type": "u128" }
       ]
     },
     {
@@ -173,6 +174,39 @@
         { "name": "pool_creators", "isMut": true, "isSigner": false }
       ],
       "args": []
+    },
+    {
+      "name": "create_concentrated_pool",
+      "accounts": [
+        { "name": "creator", "isMut": true, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_creators", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false },
+        { "name": "bin_array", "isMut": true, "isSigner": false },
+        { "name": "token_a_mint", "isMut": false, "isSigner": false },
+        { "name": "token_b_mint", "isMut": false, "isSigner": false },
+        { "name": "vault_a", "isMut": true, "isSigner": true },
+        { "name": "vault_b", "isMut": true, "isSigner": true },
+        { "name": "token_program", "isMut": false, "isSigner": false },
+        { "name": "system_program", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "bin_step_bps", "type": "u16" },
+        { "name": "initial_active_bin", "type": "i32" }
+      ]
+    },
+    {
+      "name": "shift_liquidity",
+      "accounts": [
+        { "name": "rebalancer", "isMut": false, "isSigner": true },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false },
+        { "name": "bin_array", "isMut": true, "isSigner": false }
+      ],
+      "args": [
+        { "name": "nav_bin", "type": "i32" },
+        { "name": "target_bin_count", "type": "u16" }
+      ]
     }
   ],
   "accounts": [
@@ -240,6 +274,32 @@
           { "name": "shares", "type": "u128" },
           { "name": "last_update_ts", "type": "i64" },
           { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "BinArray",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "pool", "type": { "array": ["u8", 32] } },
+          { "name": "bins", "type": { "array": [{ "defined": "Bin" }, 70] } },
+          { "name": "lower_bin_id", "type": "i32" },
+          { "name": "bin_step_bps", "type": "u16" },
+          { "name": "active_bin_id", "type": "i32" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "Bin",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "liquidity_a", "type": "u64" },
+          { "name": "liquidity_b", "type": "u64" }
         ]
       }
     }

@@ -177,6 +177,11 @@
       </div>
     {/if}
 
+    <div class="quick-nav">
+      <a href="/dex/config" class="quick-link">Config</a>
+      <a href="/dex/rebalancer" class="quick-link rebalancer">Rebalancer Status</a>
+    </div>
+
     <div class="card">
       <h2>Pools ({pools.length})</h2>
       {#if pools.length === 0}
@@ -187,12 +192,20 @@
             <a href="/dex/{pool.pda}" class="pool-card">
               <div class="pool-pair">
                 {formatAddress(pool.tokenAMint, 4)} / {formatAddress(pool.tokenBMint, 4)}
+                {#if pool.poolType === 1}
+                  <span class="type-badge concentrated">CL</span>
+                {:else}
+                  <span class="type-badge standard">SC</span>
+                {/if}
               </div>
               <div class="pool-stats">
                 <span>Reserve A: {Number(pool.reserveA).toLocaleString()}</span>
                 <span>Reserve B: {Number(pool.reserveB).toLocaleString()}</span>
                 <span>LP Shares: {pool.totalLpShares.toString()}</span>
                 <span>Fee: {pool.feeBps / 100}%</span>
+                {#if pool.poolType === 1}
+                  <span>Bin: {pool.activeBinId} ({pool.binStepBps/100}%)</span>
+                {/if}
                 <span class="badge" class:active={pool.isActive} class:paused={!pool.isActive}>
                   {pool.isActive ? 'Active' : 'Paused'}
                 </span>
@@ -252,6 +265,20 @@
   .pool-pair { font-weight: 600; margin-bottom: var(--space-2); font-family: var(--font-mono); }
   .pool-stats { display: flex; flex-wrap: wrap; gap: var(--space-2); font-size: 0.8rem; color: var(--color-text-muted); }
   .pools-grid { display: flex; flex-direction: column; gap: var(--space-2); }
+  .type-badge {
+    font-size: 0.65rem; padding: 1px 6px; border-radius: var(--radius-sm);
+    margin-left: 6px; font-weight: 700; vertical-align: middle;
+  }
+  .type-badge.concentrated { background: #f59e0b; color: #1a1a2e; }
+  .type-badge.standard { background: var(--color-border); color: var(--color-text-muted); }
+  .quick-nav { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
+  .quick-link {
+    padding: 6px 14px; background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); text-decoration: none; color: var(--color-text);
+    font-size: 0.85rem;
+  }
+  .quick-link:hover { border-color: var(--color-primary); }
+  .quick-link.rebalancer { border-color: #f59e0b; color: #f59e0b; }
   .form { display: flex; flex-direction: column; gap: var(--space-3); }
   .form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
   .form input {

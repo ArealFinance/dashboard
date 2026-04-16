@@ -5,7 +5,7 @@
   import { dexStore, dexClient, dexProgramId } from '$lib/stores/dex';
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
-  import { findDexConfigPda, TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { findDexConfigPda, findBinArrayPda, TOKEN_PROGRAM_ID } from '$lib/utils/pda';
   import { getAtaAddress } from '$lib/utils/spl';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import TxStatus from '$lib/components/TxStatus.svelte';
@@ -60,6 +60,16 @@
       const userTokenOut = getAtaAddress(deployer.publicKey, mintOut);
       const arealFee = config ? new PublicKey(config.arealFeeDestination) : deployer.publicKey;
 
+      // For concentrated pools, pass BinArray as remaining_account
+      // OT treasury goes first if present, BinArray after
+      const swapRemainingAccounts: Array<{pubkey: PublicKey, isSigner: boolean, isWritable: boolean}> = [];
+      if (pool.hasOtTreasury) {
+        swapRemainingAccounts.push({ pubkey: new PublicKey(pool.otTreasuryFeeDestination), isSigner: false, isWritable: true });
+      }
+      if (pool.poolType === 1) {
+        swapRemainingAccounts.push({ pubkey: findBinArrayPda(poolPda, dexProgramId)[0], isSigner: false, isWritable: true });
+      }
+
       const tx = client.buildTransaction('swap', {
         accounts: {
           user: deployer.publicKey,
@@ -76,7 +86,8 @@
           amount_in: amountInLamports,
           min_amount_out: parseInt(minAmountOut) || 0,
           a_to_b: aToB,
-        }
+        },
+        remainingAccounts: swapRemainingAccounts,
       });
 
       txStatus = 'sending';

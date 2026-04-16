@@ -5,7 +5,7 @@
   import { dexStore, dexClient, dexProgramId } from '$lib/stores/dex';
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
-  import { findDexConfigPda, findPoolStatePda, findLpPositionPda, TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID } from '$lib/utils/pda';
+  import { findDexConfigPda, findPoolStatePda, findLpPositionPda, findBinArrayPda, TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID } from '$lib/utils/pda';
   import { getAtaAddress } from '$lib/utils/spl';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import TxStatus from '$lib/components/TxStatus.svelte';
@@ -48,6 +48,11 @@
       const [lpPda] = findLpPositionPda(poolPda, deployer.publicKey, dexProgramId);
 
       const [configPda] = findDexConfigPda(dexProgramId);
+      // For concentrated pools, pass BinArray as remaining_account
+      const remainingAccounts = pool.poolType === 1
+        ? [{ pubkey: findBinArrayPda(poolPda, dexProgramId)[0], isSigner: false, isWritable: true }]
+        : [];
+
       const tx = client.buildTransaction('add_liquidity', {
         accounts: {
           provider: deployer.publicKey,
@@ -65,7 +70,9 @@
         args: {
           amount_a: Math.floor(Number(addAmountA) * 1_000_000),
           amount_b: Math.floor(Number(addAmountB) * 1_000_000),
-        }
+          min_shares: 0,
+        },
+        remainingAccounts,
       });
 
       addTxStatus = 'sending';
@@ -95,6 +102,11 @@
       const mintB = new PublicKey(pool.tokenBMint);
       const [lpPda] = findLpPositionPda(poolPda, deployer.publicKey, dexProgramId);
 
+      // For concentrated pools, pass BinArray for proportional bin reduction
+      const removeRemainingAccounts = pool.poolType === 1
+        ? [{ pubkey: findBinArrayPda(poolPda, dexProgramId)[0], isSigner: false, isWritable: true }]
+        : [];
+
       const tx = client.buildTransaction('remove_liquidity', {
         accounts: {
           provider: deployer.publicKey,
@@ -108,7 +120,8 @@
         },
         args: {
           shares_to_burn: removeShares,
-        }
+        },
+        remainingAccounts: removeRemainingAccounts,
       });
 
       removeTxStatus = 'sending';

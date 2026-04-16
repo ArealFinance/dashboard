@@ -21,10 +21,32 @@
     <h1>Pool Detail</h1>
     <p class="subtitle">
       {formatAddress(pool.tokenAMint, 6)} / {formatAddress(pool.tokenBMint, 6)}
+      {#if pool.poolType === 1}
+        <span class="badge concentrated">Concentrated</span>
+      {:else}
+        <span class="badge standard">Standard</span>
+      {/if}
       {#if pool.hasOtTreasury}
         <span class="badge ot">OT Pair</span>
       {/if}
     </p>
+
+    {#if pool.poolType === 1}
+      <div class="stats-grid" style="margin-bottom: var(--space-2);">
+        <div class="stat-card">
+          <span class="stat-label">Bin Step</span>
+          <span class="stat-value">{pool.binStepBps / 100}%</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Active Bin</span>
+          <span class="stat-value">{pool.activeBinId}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Bin Price</span>
+          <span class="stat-value">{Math.pow(1 + pool.binStepBps / 10000, pool.activeBinId).toFixed(6)}</span>
+        </div>
+      </div>
+    {/if}
 
     <div class="stats-grid">
       <div class="stat-card">
@@ -75,6 +97,9 @@
     <div class="nav-buttons">
       <a href="/dex/{pool.pda}/swap" class="nav-btn">Swap</a>
       <a href="/dex/{pool.pda}/liquidity" class="nav-btn">Liquidity</a>
+      {#if pool.poolType === 1}
+        <a href="/dex/{pool.pda}/bins" class="nav-btn bins">Bins</a>
+      {/if}
     </div>
   {/if}
 </div>
@@ -102,6 +127,9 @@
   .badge.active { background: var(--color-success); color: white; }
   .badge.paused { background: var(--color-danger); color: white; }
   .badge.ot { background: var(--color-primary); color: white; margin-left: 8px; }
+  .badge.concentrated { background: #f59e0b; color: #1a1a2e; margin-left: 8px; }
+  .badge.standard { background: var(--color-border); color: var(--color-text-muted); margin-left: 8px; }
+  .nav-btn.bins { background: #f59e0b; color: #1a1a2e; }
   .nav-buttons { display: flex; gap: var(--space-3); }
   .nav-btn {
     padding: 12px 24px; background: var(--color-primary); color: white;

@@ -3,7 +3,7 @@ import { PublicKey } from '@solana/web3.js';
 import { ArlexClient } from '$lib/arlex-client/index.mjs';
 import { connection } from './network';
 import idl from '$lib/idl/native-dex.json';
-import { findDexConfigPda, findPoolCreatorsPda, findPoolStatePda, findLpPositionPda } from '$lib/utils/pda';
+import { findDexConfigPda, findPoolCreatorsPda, findPoolStatePda, findLpPositionPda, findBinArrayPda } from '$lib/utils/pda';
 
 // Program ID — will be updated after deployment
 const PROGRAM_ID = new PublicKey(idl.metadata?.address ?? '11111111111111111111111111111112');
@@ -76,6 +76,26 @@ export interface LpPositionState {
   owner: string;
   shares: bigint;
   lastUpdateTs: bigint;
+  bump: number;
+}
+
+/**
+ * Bin data for concentrated pools
+ */
+export interface BinData {
+  liquidityA: bigint;
+  liquidityB: bigint;
+}
+
+/**
+ * BinArray state for concentrated pools
+ */
+export interface BinArrayState {
+  pool: string;
+  bins: BinData[];
+  lowerBinId: number;
+  binStepBps: number;
+  activeBinId: number;
   bump: number;
 }
 
@@ -218,6 +238,33 @@ function createDexStore() {
           return parsed;
         }
         return null;
+      } catch {
+        return null;
+      }
+    },
+
+    async fetchBinArray(poolStatePda: PublicKey): Promise<BinArrayState | null> {
+      try {
+        const client = get(dexClient);
+        const [binPda] = findBinArrayPda(poolStatePda, PROGRAM_ID);
+        const data = await client.fetch('BinArray', binPda).catch(() => null);
+        if (!data) return null;
+        const bins: BinData[] = [];
+        for (let i = 0; i < 70; i++) {
+          const b = data.bins[i];
+          bins.push({
+            liquidityA: BigInt(b.liquidity_a.toString()),
+            liquidityB: BigInt(b.liquidity_b.toString()),
+          });
+        }
+        return {
+          pool: bytesToPubkeyString(data.pool),
+          bins,
+          lowerBinId: data.lower_bin_id,
+          binStepBps: data.bin_step_bps,
+          activeBinId: data.active_bin_id,
+          bump: data.bump,
+        };
       } catch {
         return null;
       }

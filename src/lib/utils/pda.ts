@@ -162,6 +162,20 @@ export function findLpPositionPda(
 }
 
 /**
+ * Derive BinArray PDA for concentrated pools
+ * Seeds: ["bins", pool_state]
+ */
+export function findBinArrayPda(
+  poolState: PublicKey,
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('bins'), poolState.toBuffer()],
+    programId
+  );
+}
+
+/**
  * Derive Associated Token Account address
  */
 export function findAta(owner: PublicKey, mint: PublicKey): PublicKey {
