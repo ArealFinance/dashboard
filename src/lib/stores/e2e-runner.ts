@@ -1560,7 +1560,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         token_program: TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
-      args: { amount_a: amountA, amount_b: amountB }
+      args: { amount_a: amountA, amount_b: amountB, min_shares: 0 }
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
@@ -1596,7 +1596,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         token_program: TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
-      args: { amount_a: 50_000_000, amount_b: 50_000_000 }
+      args: { amount_a: 50_000_000, amount_b: 50_000_000, min_shares: 0 }
     });
 
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
