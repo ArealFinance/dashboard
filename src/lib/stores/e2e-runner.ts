@@ -1299,6 +1299,278 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
   }
 };
 
+// ---- RWT ↔ DEX Integration E2E Scenario (Layer 6) ----
+
+interface VaultSwapE2EContext extends E2EContext {
+  rwtMint?: PublicKey;
+  usdcMint?: PublicKey;
+  rwtVaultPda?: PublicKey;
+  poolPda?: PublicKey;
+  mintA?: PublicKey;
+  mintB?: PublicKey;
+  vaultA?: PublicKey;
+  vaultB?: PublicKey;
+  managerKeypair?: Keypair;
+  dexConfigPda?: PublicKey;
+  arealFeeAta?: PublicKey;
+}
+
+function createVaultSwapE2ESteps(): E2EStep[] {
+  return [
+    { id: 'vs-load-state', name: 'Load RWT & DEX State', description: 'Load RWT vault, mints, DEX pool from on-chain state (requires RWT + DEX E2E to have run).', status: 'pending' },
+    { id: 'vs-set-manager', name: 'Set Manager', description: 'Set deployer as vault manager for vault_swap execution.', status: 'pending' },
+    { id: 'vs-fund-vault-usdc', name: 'Fund Vault USDC', description: 'Create vault USDC ATA and mint test USDC to it.', status: 'pending' },
+    { id: 'vs-swap-a-to-b', name: 'Vault Swap A→B', description: 'vault_swap through DEX pool, verify vault balances change.', status: 'pending' },
+    { id: 'vs-swap-b-to-a', name: 'Vault Swap B→A', description: 'Reverse swap, verify balances.', status: 'pending' },
+    { id: 'vs-manager-only', name: 'Manager-Only Check', description: 'Non-manager attempt fails with UnauthorizedManager.', status: 'pending' },
+  ];
+}
+
+const vaultSwapStepExecutors: Record<string, StepExecutor> = {
+  'vs-load-state': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    const { rwtClient: rwtClientStore, rwtProgramId: rwtProgId } = await import('./rwt');
+    const { dexProgramId: dexProgId } = await import('./dex');
+    const { findRwtVaultPda: findVaultPda } = await import('$lib/utils/pda');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+
+    const [vaultPda] = findVaultPda(rwtProgId);
+    ctx.rwtVaultPda = vaultPda;
+
+    // Read vault state to get RWT mint
+    const vaultData = await client.fetch('RwtVault', vaultPda);
+    const rwtMintBytes = vaultData.rwt_mint instanceof Uint8Array ? vaultData.rwt_mint : new Uint8Array(vaultData.rwt_mint);
+    ctx.rwtMint = new PublicKey(rwtMintBytes);
+
+    // Read capital ATA to get USDC mint
+    const capAtaBytes = vaultData.capital_accumulator_ata instanceof Uint8Array
+      ? vaultData.capital_accumulator_ata : new Uint8Array(vaultData.capital_accumulator_ata);
+    const capAta = new PublicKey(capAtaBytes);
+    const capInfo = await conn.getAccountInfo(capAta);
+    if (!capInfo) throw new Error('Capital ATA not found');
+    ctx.usdcMint = new PublicKey(capInfo.data.slice(0, 32));
+
+    // Canonical mint ordering for pool PDA
+    const [mintA, mintB] = ctx.rwtMint.toBuffer().compare(ctx.usdcMint.toBuffer()) < 0
+      ? [ctx.rwtMint, ctx.usdcMint] : [ctx.usdcMint, ctx.rwtMint];
+    ctx.mintA = mintA;
+    ctx.mintB = mintB;
+
+    const [poolPda] = findPoolStatePda(mintA, mintB, dexProgId);
+    const poolInfo = await conn.getAccountInfo(poolPda);
+    if (!poolInfo) throw new Error('DEX pool not found — run DEX E2E first');
+    ctx.poolPda = poolPda;
+    ctx.vaultA = new PublicKey(poolInfo.data.slice(73, 105));
+    ctx.vaultB = new PublicKey(poolInfo.data.slice(105, 137));
+
+    const [dexConfigPda] = findDexConfigPda(dexProgId);
+    ctx.dexConfigPda = dexConfigPda;
+    const configInfo = await conn.getAccountInfo(dexConfigPda);
+    if (!configInfo) throw new Error('DexConfig not found');
+    ctx.arealFeeAta = new PublicKey(configInfo.data.slice(109, 141));
+
+    return { result: {
+      rwtMint: ctx.rwtMint.toBase58(),
+      usdcMint: ctx.usdcMint.toBase58(),
+      pool: poolPda.toBase58(),
+      mintA: mintA.toBase58(),
+      mintB: mintB.toBase58(),
+    }};
+  },
+
+  'vs-set-manager': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+
+    // Set deployer as manager so deployer can sign vault_swap
+    const tx = client.buildTransaction('update_vault_manager', {
+      accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda },
+      args: { new_manager: Array.from(deployer.publicKey.toBytes()) }
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    ctx.managerKeypair = deployer;
+    return { txSignature: sig, result: { manager: deployer.publicKey.toBase58() } };
+  },
+
+  'vs-fund-vault-usdc': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda || !ctx.usdcMint) throw new Error('Previous steps not completed');
+    const conn = get(connection);
+    const vaultUsdcAta = getAtaAddress(ctx.rwtVaultPda, ctx.usdcMint);
+
+    // Create ATA for vault PDA (if doesn't exist)
+    const ataInfo = await conn.getAccountInfo(vaultUsdcAta);
+    if (!ataInfo) {
+      await createAta(conn, deployer, ctx.usdcMint, ctx.rwtVaultPda);
+    }
+
+    // Mint 100 USDC to vault ATA
+    await mintTo(conn, deployer, ctx.usdcMint, vaultUsdcAta, 100_000_000);
+    const balance = await getTokenBalance(conn, vaultUsdcAta);
+
+    return { result: { vaultUsdcAta: vaultUsdcAta.toBase58(), balance } };
+  },
+
+  'vs-swap-a-to-b': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda || !ctx.poolPda || !ctx.mintA || !ctx.mintB || !ctx.vaultA || !ctx.vaultB || !ctx.dexConfigPda || !ctx.arealFeeAta || !ctx.usdcMint || !ctx.rwtMint) {
+      throw new Error('Previous steps not completed');
+    }
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const { dexProgramId: dexProgId } = await import('./dex');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+
+    // Determine direction: we want to swap USDC → RWT
+    // If mintA is USDC, then a_to_b=true swaps USDC→RWT; else a_to_b=false
+    const a_to_b = ctx.mintA.equals(ctx.usdcMint);
+    const mintIn = a_to_b ? ctx.mintA : ctx.mintB;
+    const mintOut = a_to_b ? ctx.mintB : ctx.mintA;
+
+    const vaultTokenIn = getAtaAddress(ctx.rwtVaultPda, mintIn);
+    const vaultTokenOut = getAtaAddress(ctx.rwtVaultPda, mintOut);
+
+    // Create vault RWT ATA if needed
+    const outAtaInfo = await conn.getAccountInfo(vaultTokenOut);
+    if (!outAtaInfo) {
+      await createAta(conn, deployer, mintOut, ctx.rwtVaultPda);
+    }
+
+    const balBefore = await getTokenBalance(conn, vaultTokenIn);
+
+    const tx = client.buildTransaction('vault_swap', {
+      accounts: {
+        manager: deployer.publicKey,
+        rwt_vault: ctx.rwtVaultPda,
+        vault_token_in: vaultTokenIn,
+        vault_token_out: vaultTokenOut,
+        dex_config: ctx.dexConfigPda,
+        pool_state: ctx.poolPda,
+        pool_vault_in: a_to_b ? ctx.vaultA : ctx.vaultB,
+        pool_vault_out: a_to_b ? ctx.vaultB : ctx.vaultA,
+        areal_fee_account: ctx.arealFeeAta,
+        dex_program: dexProgId,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { amount_in: 10_000_000, min_amount_out: 1, a_to_b }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    const balAfter = await getTokenBalance(conn, vaultTokenIn);
+    const balOut = await getTokenBalance(conn, vaultTokenOut);
+
+    return { txSignature: sig, result: {
+      direction: 'USDC→RWT',
+      amountIn: 10_000_000,
+      balanceBefore: balBefore,
+      balanceAfter: balAfter,
+      outputBalance: balOut,
+      inputDecreased: balAfter < balBefore ? 'PASS' : 'FAIL',
+      outputIncreased: balOut > 0 ? 'PASS' : 'FAIL',
+    }};
+  },
+
+  'vs-swap-b-to-a': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda || !ctx.poolPda || !ctx.mintA || !ctx.mintB || !ctx.vaultA || !ctx.vaultB || !ctx.dexConfigPda || !ctx.arealFeeAta || !ctx.usdcMint || !ctx.rwtMint) {
+      throw new Error('Previous steps not completed');
+    }
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const { dexProgramId: dexProgId } = await import('./dex');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+
+    // Reverse: swap RWT → USDC
+    const a_to_b = ctx.mintA.equals(ctx.rwtMint);
+    const mintIn = a_to_b ? ctx.mintA : ctx.mintB;
+    const mintOut = a_to_b ? ctx.mintB : ctx.mintA;
+
+    const vaultTokenIn = getAtaAddress(ctx.rwtVaultPda, mintIn);
+    const vaultTokenOut = getAtaAddress(ctx.rwtVaultPda, mintOut);
+
+    const balInBefore = await getTokenBalance(conn, vaultTokenIn);
+    const balOutBefore = await getTokenBalance(conn, vaultTokenOut);
+
+    const tx = client.buildTransaction('vault_swap', {
+      accounts: {
+        manager: deployer.publicKey,
+        rwt_vault: ctx.rwtVaultPda,
+        vault_token_in: vaultTokenIn,
+        vault_token_out: vaultTokenOut,
+        dex_config: ctx.dexConfigPda,
+        pool_state: ctx.poolPda,
+        pool_vault_in: a_to_b ? ctx.vaultA : ctx.vaultB,
+        pool_vault_out: a_to_b ? ctx.vaultB : ctx.vaultA,
+        areal_fee_account: ctx.arealFeeAta,
+        dex_program: dexProgId,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { amount_in: 5_000_000, min_amount_out: 1, a_to_b }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    const balInAfter = await getTokenBalance(conn, vaultTokenIn);
+    const balOutAfter = await getTokenBalance(conn, vaultTokenOut);
+
+    return { txSignature: sig, result: {
+      direction: 'RWT→USDC',
+      amountIn: 5_000_000,
+      inputBefore: balInBefore, inputAfter: balInAfter,
+      outputBefore: balOutBefore, outputAfter: balOutAfter,
+      inputDecreased: balInAfter < balInBefore ? 'PASS' : 'FAIL',
+      outputIncreased: balOutAfter > balOutBefore ? 'PASS' : 'FAIL',
+    }};
+  },
+
+  'vs-manager-only': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtVaultPda || !ctx.poolPda || !ctx.mintA || !ctx.mintB || !ctx.vaultA || !ctx.vaultB || !ctx.dexConfigPda || !ctx.arealFeeAta || !ctx.usdcMint) {
+      throw new Error('Previous steps not completed');
+    }
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const { dexProgramId: dexProgId } = await import('./dex');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+
+    const fakeManager = Keypair.generate();
+    // Airdrop SOL to fake manager
+    const airdropSig = await conn.requestAirdrop(fakeManager.publicKey, 1_000_000_000);
+    await conn.confirmTransaction(airdropSig);
+
+    const a_to_b = ctx.mintA.equals(ctx.usdcMint);
+    const mintIn = a_to_b ? ctx.mintA : ctx.mintB;
+    const mintOut = a_to_b ? ctx.mintB : ctx.mintA;
+
+    const vaultTokenIn = getAtaAddress(ctx.rwtVaultPda, mintIn);
+    const vaultTokenOut = getAtaAddress(ctx.rwtVaultPda, mintOut);
+
+    let rejected = false;
+    try {
+      const tx = client.buildTransaction('vault_swap', {
+        accounts: {
+          manager: fakeManager.publicKey,
+          rwt_vault: ctx.rwtVaultPda,
+          vault_token_in: vaultTokenIn,
+          vault_token_out: vaultTokenOut,
+          dex_config: ctx.dexConfigPda,
+          pool_state: ctx.poolPda,
+          pool_vault_in: a_to_b ? ctx.vaultA : ctx.vaultB,
+          pool_vault_out: a_to_b ? ctx.vaultB : ctx.vaultA,
+          areal_fee_account: ctx.arealFeeAta,
+          dex_program: dexProgId,
+          token_program: TOKEN_PROGRAM_ID,
+        },
+        args: { amount_in: 1_000_000, min_amount_out: 1, a_to_b }
+      });
+      await signAndSendTransaction(conn, tx, [fakeManager]);
+    } catch {
+      rejected = true;
+    }
+
+    return { result: {
+      'Non-Manager Rejected': rejected ? 'PASS' : 'FAIL',
+    }};
+  },
+};
+
 // ---- Scenario Registry ----
 
 interface ScenarioDefinition {
@@ -2024,7 +2296,8 @@ const SCENARIOS: ScenarioDefinition[] = [
   { id: 'futarchy-governance', name: 'Futarchy Governance', steps: createFutarchyE2ESteps, executors: futarchyStepExecutors },
   { id: 'rwt-lifecycle', name: 'RWT Mint & Manage', steps: createRwtE2ESteps, executors: rwtStepExecutors },
   { id: 'dex-lifecycle', name: 'DEX Pool & Swap', steps: createDexE2ESteps, executors: dexStepExecutors },
-  { id: 'cl-lifecycle', name: 'DEX Concentrated', steps: createConcentratedE2ESteps, executors: concentratedStepExecutors }
+  { id: 'cl-lifecycle', name: 'DEX Concentrated', steps: createConcentratedE2ESteps, executors: concentratedStepExecutors },
+  { id: 'vault-swap', name: 'RWT ↔ DEX (Vault Swap)', steps: createVaultSwapE2ESteps, executors: vaultSwapStepExecutors }
 ];
 
 // ---- Store ----

@@ -125,6 +125,27 @@
         { "name": "rwt_vault", "isMut": true, "isSigner": false }
       ],
       "args": []
+    },
+    {
+      "name": "vault_swap",
+      "accounts": [
+        { "name": "manager", "isMut": false, "isSigner": true },
+        { "name": "rwt_vault", "isMut": true, "isSigner": false },
+        { "name": "vault_token_in", "isMut": true, "isSigner": false },
+        { "name": "vault_token_out", "isMut": true, "isSigner": false },
+        { "name": "dex_config", "isMut": false, "isSigner": false },
+        { "name": "pool_state", "isMut": true, "isSigner": false },
+        { "name": "pool_vault_in", "isMut": true, "isSigner": false },
+        { "name": "pool_vault_out", "isMut": true, "isSigner": false },
+        { "name": "areal_fee_account", "isMut": true, "isSigner": false },
+        { "name": "dex_program", "isMut": false, "isSigner": false },
+        { "name": "token_program", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount_in", "type": "u64" },
+        { "name": "min_amount_out", "type": "u64" },
+        { "name": "a_to_b", "type": "bool" }
+      ]
     }
   ],
   "accounts": [
@@ -184,6 +205,10 @@
     { "code": 6016, "name": "InvalidFeeDestination", "msg": "Fee destination cannot be zero address" },
     { "code": 6017, "name": "InvalidTokenAccount", "msg": "Invalid token account" },
     { "code": 6018, "name": "SlippageExceeded", "msg": "Output below minimum (slippage protection)" },
-    { "code": 6019, "name": "ZeroDestination", "msg": "Destination address cannot be zero" }
+    { "code": 6019, "name": "ZeroDestination", "msg": "Destination address cannot be zero" },
+    { "code": 6020, "name": "InvalidDexProgram", "msg": "DEX program account does not match DEX_PROGRAM_ID" },
+    { "code": 6021, "name": "InvalidVaultTokenOwner", "msg": "Vault token account not owned by vault PDA" },
+    { "code": 6022, "name": "ManagerDisabled", "msg": "Manager wallet not set (zero address)" },
+    { "code": 6023, "name": "SameTokenAccount", "msg": "Input and output token accounts must be different" }
   ]
 }
