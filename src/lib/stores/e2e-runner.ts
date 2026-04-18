@@ -955,9 +955,28 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
     const { findRwtVaultPda, findRwtDistConfigPda } = await import('$lib/utils/pda');
     const conn = get(connection);
     const client = get(rwtClientStore);
-    const rwtMintKeypair = Keypair.generate();
     const [vaultPda] = findRwtVaultPda(rwtProgId);
     const [distConfigPda] = findRwtDistConfigPda(rwtProgId);
+
+    // Idempotent: skip if vault already initialized. Layout after 8-byte disc:
+    // total_invested_capital(16) @8, total_rwt_supply(8) @24, nav_book_value(8) @32,
+    // capital_accumulator_ata(32) @40..72, rwt_mint(32) @72..104.
+    const existingVault = await conn.getAccountInfo(vaultPda);
+    if (existingVault) {
+      const capAta = new PublicKey(existingVault.data.slice(40, 72));
+      const rwtMint = new PublicKey(existingVault.data.slice(72, 104));
+      ctx.rwtVaultPda = vaultPda;
+      ctx.distConfigPda = distConfigPda;
+      ctx.rwtMint = rwtMint;
+      ctx.capitalAccAta = capAta;
+      return { result: {
+        skipped: 'already initialized',
+        rwtMint: rwtMint.toBase58(),
+        vault: vaultPda.toBase58(),
+      }};
+    }
+
+    const rwtMintKeypair = Keypair.generate();
     const capitalAccAta = getAtaAddress(vaultPda, ctx.usdcMint);
     ctx.rwtMintKeypair = rwtMintKeypair;
     ctx.rwtVaultPda = vaultPda;
@@ -1306,6 +1325,7 @@ interface VaultSwapE2EContext extends E2EContext {
   usdcMint?: PublicKey;
   rwtVaultPda?: PublicKey;
   poolPda?: PublicKey;
+  poolExists?: boolean;
   mintA?: PublicKey;
   mintB?: PublicKey;
   vaultA?: PublicKey;
@@ -1317,7 +1337,11 @@ interface VaultSwapE2EContext extends E2EContext {
 
 function createVaultSwapE2ESteps(): E2EStep[] {
   return [
-    { id: 'vs-load-state', name: 'Load RWT & DEX State', description: 'Load RWT vault, mints, DEX pool from on-chain state (requires RWT + DEX E2E to have run).', status: 'pending' },
+    { id: 'vs-load-state', name: 'Load RWT & DEX State', description: 'Load RWT vault + mints from on-chain state. Detects whether DEX pool already exists.', status: 'pending' },
+    { id: 'vs-ensure-dex-config', name: 'Ensure DEX Config', description: 'Initialize DEX config if missing (idempotent).', status: 'pending' },
+    { id: 'vs-ensure-pool', name: 'Ensure (RWT, USDC) Pool', description: 'Create standard DEX pool for (RWT, USDC) if missing (idempotent).', status: 'pending' },
+    { id: 'vs-ensure-lp-funds', name: 'Ensure LP Funds', description: 'Mint USDC and RWT to deployer for liquidity seeding.', status: 'pending' },
+    { id: 'vs-ensure-liquidity', name: 'Ensure Pool Liquidity', description: 'Seed pool with initial liquidity if empty (idempotent).', status: 'pending' },
     { id: 'vs-set-manager', name: 'Set Manager', description: 'Set deployer as vault manager for vault_swap execution.', status: 'pending' },
     { id: 'vs-fund-vault-usdc', name: 'Fund Vault USDC', description: 'Create vault USDC ATA and mint test USDC to it.', status: 'pending' },
     { id: 'vs-swap-a-to-b', name: 'Vault Swap A→B', description: 'vault_swap through DEX pool, verify vault balances change.', status: 'pending' },
@@ -1337,12 +1361,10 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
     const [vaultPda] = findVaultPda(rwtProgId);
     ctx.rwtVaultPda = vaultPda;
 
-    // Read vault state to get RWT mint
     const vaultData = await client.fetch('RwtVault', vaultPda);
     const rwtMintBytes = vaultData.rwt_mint instanceof Uint8Array ? vaultData.rwt_mint : new Uint8Array(vaultData.rwt_mint);
     ctx.rwtMint = new PublicKey(rwtMintBytes);
 
-    // Read capital ATA to get USDC mint
     const capAtaBytes = vaultData.capital_accumulator_ata instanceof Uint8Array
       ? vaultData.capital_accumulator_ata : new Uint8Array(vaultData.capital_accumulator_ata);
     const capAta = new PublicKey(capAtaBytes);
@@ -1350,24 +1372,28 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
     if (!capInfo) throw new Error('Capital ATA not found');
     ctx.usdcMint = new PublicKey(capInfo.data.slice(0, 32));
 
-    // Canonical mint ordering for pool PDA
     const [mintA, mintB] = ctx.rwtMint.toBuffer().compare(ctx.usdcMint.toBuffer()) < 0
       ? [ctx.rwtMint, ctx.usdcMint] : [ctx.usdcMint, ctx.rwtMint];
     ctx.mintA = mintA;
     ctx.mintB = mintB;
 
     const [poolPda] = findPoolStatePda(mintA, mintB, dexProgId);
-    const poolInfo = await conn.getAccountInfo(poolPda);
-    if (!poolInfo) throw new Error('DEX pool not found — run DEX E2E first');
     ctx.poolPda = poolPda;
-    ctx.vaultA = new PublicKey(poolInfo.data.slice(73, 105));
-    ctx.vaultB = new PublicKey(poolInfo.data.slice(105, 137));
 
-    const [dexConfigPda] = findDexConfigPda(dexProgId);
-    ctx.dexConfigPda = dexConfigPda;
-    const configInfo = await conn.getAccountInfo(dexConfigPda);
-    if (!configInfo) throw new Error('DexConfig not found');
-    ctx.arealFeeAta = new PublicKey(configInfo.data.slice(109, 141));
+    const poolInfo = await conn.getAccountInfo(poolPda);
+    if (poolInfo) {
+      ctx.poolExists = true;
+      ctx.vaultA = new PublicKey(poolInfo.data.slice(73, 105));
+      ctx.vaultB = new PublicKey(poolInfo.data.slice(105, 137));
+
+      const [dexConfigPda] = findDexConfigPda(dexProgId);
+      ctx.dexConfigPda = dexConfigPda;
+      const configInfo = await conn.getAccountInfo(dexConfigPda);
+      if (!configInfo) throw new Error('DexConfig not found');
+      ctx.arealFeeAta = new PublicKey(configInfo.data.slice(109, 141));
+    } else {
+      ctx.poolExists = false;
+    }
 
     return { result: {
       rwtMint: ctx.rwtMint.toBase58(),
@@ -1375,6 +1401,183 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
       pool: poolPda.toBase58(),
       mintA: mintA.toBase58(),
       mintB: mintB.toBase58(),
+      poolExists: ctx.poolExists,
+    }};
+  },
+
+  'vs-ensure-dex-config': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtMint) throw new Error('Previous steps not completed');
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const [configPda] = findDexConfigPda(dexProgramId);
+    const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
+
+    const existing = await conn.getAccountInfo(configPda);
+    if (existing) {
+      ctx.dexConfigPda = configPda;
+      ctx.arealFeeAta = new PublicKey(existing.data.slice(109, 141));
+      return { result: {
+        dexConfig: configPda.toBase58(),
+        arealFeeAta: ctx.arealFeeAta.toBase58(),
+        skipped: 'already initialized',
+      }};
+    }
+
+    const feeAta = await createAta(conn, deployer, ctx.rwtMint, deployer.publicKey);
+
+    const tx = client.buildTransaction('initialize_dex', {
+      accounts: {
+        deployer: deployer.publicKey,
+        dex_config: configPda,
+        pool_creators: creatorsPda,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: {
+        areal_fee_destination: Array.from(feeAta.toBytes()),
+        pause_authority: Array.from(deployer.publicKey.toBytes()),
+        rebalancer: Array.from(deployer.publicKey.toBytes()),
+      }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    ctx.dexConfigPda = configPda;
+    ctx.arealFeeAta = feeAta;
+    return { txSignature: sig, result: {
+      dexConfig: configPda.toBase58(),
+      arealFeeAta: feeAta.toBase58(),
+    }};
+  },
+
+  'vs-ensure-pool': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.mintA || !ctx.mintB || !ctx.dexConfigPda) throw new Error('Previous steps not completed');
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+    const [configPda] = findDexConfigPda(dexProgramId);
+    const [creatorsPda] = findPoolCreatorsPda(dexProgramId);
+    const [poolPda] = findPoolStatePda(ctx.mintA, ctx.mintB, dexProgramId);
+
+    const existing = await conn.getAccountInfo(poolPda);
+    if (existing) {
+      ctx.poolPda = poolPda;
+      ctx.vaultA = new PublicKey(existing.data.slice(73, 105));
+      ctx.vaultB = new PublicKey(existing.data.slice(105, 137));
+      ctx.poolExists = true;
+      return { result: {
+        pool: poolPda.toBase58(),
+        mintA: ctx.mintA.toBase58(),
+        mintB: ctx.mintB.toBase58(),
+        skipped: 'already exists',
+      }};
+    }
+
+    const vaultA = Keypair.generate();
+    const vaultB = Keypair.generate();
+
+    const tx = client.buildTransaction('create_pool', {
+      accounts: {
+        creator: deployer.publicKey,
+        dex_config: configPda,
+        pool_creators: creatorsPda,
+        pool_state: poolPda,
+        token_a_mint: ctx.mintA,
+        token_b_mint: ctx.mintB,
+        vault_a: vaultA.publicKey,
+        vault_b: vaultB.publicKey,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: {}
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer, vaultA, vaultB]);
+    ctx.poolPda = poolPda;
+    ctx.vaultA = vaultA.publicKey;
+    ctx.vaultB = vaultB.publicKey;
+    ctx.poolExists = true;
+
+    return { txSignature: sig, result: {
+      pool: poolPda.toBase58(),
+      mintA: ctx.mintA.toBase58(),
+      mintB: ctx.mintB.toBase58(),
+    }};
+  },
+
+  'vs-ensure-lp-funds': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.rwtMint || !ctx.usdcMint || !ctx.rwtVaultPda) throw new Error('Previous steps not completed');
+    const { rwtClient: rwtClientStore } = await import('./rwt');
+    const conn = get(connection);
+    const client = get(rwtClientStore);
+
+    const deployerRwtAta = await createAta(conn, deployer, ctx.rwtMint, deployer.publicKey);
+    const deployerUsdcAta = await createAta(conn, deployer, ctx.usdcMint, deployer.publicKey);
+
+    const usdcAmount = 2_000_000_000;
+    await mintTo(conn, deployer, ctx.usdcMint, deployerUsdcAta, usdcAmount);
+
+    // admin_mint_rwt: authority = vault.initial_authority = deployer (set at init_vault).
+    const rwtAmount = 500_000_000;
+    const backingUsd = 500_000_000;
+    const tx = client.buildTransaction('admin_mint_rwt', {
+      accounts: {
+        authority: deployer.publicKey,
+        rwt_vault: ctx.rwtVaultPda,
+        rwt_mint: ctx.rwtMint,
+        recipient_rwt: deployerRwtAta,
+        token_program: TOKEN_PROGRAM_ID,
+      },
+      args: { rwt_amount: rwtAmount, backing_capital_usd: backingUsd }
+    });
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+
+    return { txSignature: sig, result: {
+      deployerRwtAta: deployerRwtAta.toBase58(),
+      deployerUsdcAta: deployerUsdcAta.toBase58(),
+      rwtMinted: rwtAmount,
+      usdcMinted: usdcAmount,
+    }};
+  },
+
+  'vs-ensure-liquidity': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
+    if (!ctx.poolPda || !ctx.mintA || !ctx.mintB || !ctx.vaultA || !ctx.vaultB) {
+      throw new Error('Previous steps not completed');
+    }
+    const conn = get(connection);
+    const { client, programId: dexProgramId } = await getDex();
+
+    const existingLiquidity = await getTokenBalance(conn, ctx.vaultA);
+    if (existingLiquidity > 0n) {
+      return { result: {
+        skipped: 'pool already seeded',
+        vaultABalance: existingLiquidity.toString(),
+      }};
+    }
+
+    const [lpPda] = findLpPositionPda(ctx.poolPda, deployer.publicKey, dexProgramId);
+    const [configPda] = findDexConfigPda(dexProgramId);
+
+    const amountA = 100_000_000;
+    const amountB = 100_000_000;
+
+    const tx = client.buildTransaction('add_liquidity', {
+      accounts: {
+        provider: deployer.publicKey,
+        payer: deployer.publicKey,
+        dex_config: configPda,
+        pool_state: ctx.poolPda,
+        lp_position: lpPda,
+        provider_token_a: getAtaAddress(deployer.publicKey, ctx.mintA),
+        provider_token_b: getAtaAddress(deployer.publicKey, ctx.mintB),
+        vault_a: ctx.vaultA,
+        vault_b: ctx.vaultB,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SYSTEM_PROGRAM_ID,
+      },
+      args: { amount_a: amountA, amount_b: amountB, min_shares: 0 }
+    });
+
+    const sig = await signAndSendTransaction(conn, tx, [deployer]);
+    return { txSignature: sig, result: {
+      amountA, amountB, expectedShares: '99999000',
     }};
   },
 
