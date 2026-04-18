@@ -1,4 +1,5 @@
-import { writable, get } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
+import { browser } from '$app/environment';
 import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { connection } from './network';
 import { devKeys } from './devkeys';
@@ -2028,41 +2029,159 @@ const SCENARIOS: ScenarioDefinition[] = [
 
 // ---- Store ----
 
+const STORAGE_PREFIX = 'areal_e2e_runner_v1';
+const SELECTED_KEY = `${STORAGE_PREFIX}:selected`;
+
+function keyFor(id: string) {
+  return `${STORAGE_PREFIX}:${id}`;
+}
+
+function sanitizeResult(result: Record<string, any> | undefined): Record<string, any> | undefined {
+  if (!result) return result;
+  const out: Record<string, any> = {};
+  for (const key of Object.keys(result)) {
+    const v = (result as any)[key];
+    const t = typeof v;
+    if (t === 'string' || t === 'number' || t === 'boolean') {
+      out[key] = v;
+    } else if (t === 'bigint') {
+      out[key] = (v as bigint).toString();
+    } else {
+      console.warn('[e2e] dropped non-primitive result field:', key);
+    }
+  }
+  return out;
+}
+
+function hydrateScenario(def: ScenarioDefinition): E2EScenario {
+  const fresh: E2EScenario = { id: def.id, name: def.name, steps: def.steps(), status: 'idle' };
+  if (!browser) return fresh;
+  const raw = localStorage.getItem(keyFor(def.id));
+  if (!raw) return fresh;
+  try {
+    const parsed = JSON.parse(raw) as E2EScenario;
+    if (parsed?.id !== def.id || !Array.isArray(parsed.steps)) return fresh;
+    // Interrupted-run repair: a scenario left in 'running' means page reload killed it mid-run.
+    if (parsed.status === 'running') {
+      parsed.status = 'failed';
+      parsed.completedAt = parsed.completedAt ?? Date.now();
+    }
+    const allowedStatuses: StepStatus[] = ['pending', 'running', 'success', 'error', 'skipped'];
+    // Re-attach fresh name/description per step (source may have changed between sessions);
+    // drop persisted data for step slots whose ids no longer match the current definition.
+    parsed.steps = fresh.steps.map((f, i) => {
+      const saved = parsed.steps[i];
+      if (!saved || saved.id !== f.id) return f;
+
+      const rawStatus = allowedStatuses.includes(saved.status as StepStatus)
+        ? (saved.status as StepStatus)
+        : 'pending';
+      const status: E2EStep['status'] = rawStatus === 'running' ? 'error' : rawStatus;
+
+      const txSignature =
+        typeof saved.txSignature === 'string' && saved.txSignature.length <= 128
+          ? saved.txSignature
+          : undefined;
+
+      const savedErr =
+        typeof saved.error === 'string' && saved.error.length <= 2048 ? saved.error : undefined;
+      const error = rawStatus === 'running' ? (savedErr ?? 'Interrupted by page reload') : savedErr;
+
+      const durationMs =
+        typeof saved.durationMs === 'number' &&
+        Number.isFinite(saved.durationMs) &&
+        saved.durationMs >= 0
+          ? saved.durationMs
+          : undefined;
+
+      const isPlainResult =
+        saved.result != null &&
+        typeof saved.result === 'object' &&
+        !Array.isArray(saved.result);
+      const result = isPlainResult ? sanitizeResult(saved.result as Record<string, any>) : undefined;
+
+      return {
+        ...f,
+        status,
+        txSignature,
+        result,
+        error,
+        durationMs,
+      };
+    });
+    return { ...fresh, ...parsed, name: def.name };
+  } catch {
+    return fresh;
+  }
+}
+
 function createE2ERunnerStore() {
-  const selectedId = writable<string>('ot-lifecycle');
-  const scenario = writable<E2EScenario>({
-    id: 'ot-lifecycle',
-    name: 'OT Full Lifecycle',
-    steps: createOtE2ESteps(),
-    status: 'idle'
-  });
+  const initialMap: Record<string, E2EScenario> = {};
+  for (const def of SCENARIOS) initialMap[def.id] = hydrateScenario(def);
+
+  let initialSelected = SCENARIOS[0].id;
+  if (browser) {
+    const savedSel = localStorage.getItem(SELECTED_KEY);
+    if (savedSel && SCENARIOS.some(s => s.id === savedSel)) initialSelected = savedSel;
+  }
+
+  const scenariosById = writable<Record<string, E2EScenario>>(initialMap);
+  const selectedId = writable<string>(initialSelected);
+  const active = derived([scenariosById, selectedId], ([m, id]) => m[id]);
+
+  function persistScenario(s: E2EScenario) {
+    if (!browser) return;
+    try {
+      // Sanitize a copy (don't mutate in-memory scenario) to ensure no non-primitive
+      // result fields (e.g. Keypair/Uint8Array) ever hit localStorage.
+      const safe: E2EScenario = {
+        ...s,
+        steps: s.steps.map(st => ({ ...st, result: sanitizeResult(st.result) })),
+      };
+      localStorage.setItem(keyFor(s.id), JSON.stringify(safe));
+    } catch (e) {
+      console.warn('[e2e] persist failed', e);
+    }
+  }
+
+  function updateActive(updater: (s: E2EScenario) => E2EScenario) {
+    scenariosById.update(m => {
+      const id = get(selectedId);
+      const next = updater(m[id]);
+      persistScenario(next);
+      return { ...m, [id]: next };
+    });
+  }
 
   return {
-    subscribe: scenario.subscribe,
-    selectedId,
+    subscribe: active.subscribe,
+    selectedId: { subscribe: selectedId.subscribe },
     scenarios: SCENARIOS.map(s => ({ id: s.id, name: s.name })),
 
     selectScenario(id: string) {
-      const def = SCENARIOS.find(s => s.id === id);
-      if (!def) return;
+      if (!SCENARIOS.some(s => s.id === id)) return;
       selectedId.set(id);
-      scenario.set({
-        id: def.id,
-        name: def.name,
-        steps: def.steps(),
-        status: 'idle'
-      });
+      if (browser) {
+        try {
+          localStorage.setItem(SELECTED_KEY, id);
+        } catch (e) {
+          console.warn('[e2e] selected-id persist failed', e);
+        }
+      }
     },
 
     reset() {
       const id = get(selectedId);
       const def = SCENARIOS.find(s => s.id === id) ?? SCENARIOS[0];
-      scenario.set({
-        id: def.id,
-        name: def.name,
-        steps: def.steps(),
-        status: 'idle'
-      });
+      const fresh: E2EScenario = { id: def.id, name: def.name, steps: def.steps(), status: 'idle' };
+      scenariosById.update(m => ({ ...m, [def.id]: fresh }));
+      if (browser) {
+        try {
+          localStorage.removeItem(keyFor(def.id));
+        } catch (e) {
+          console.warn('[e2e] reset persist failed', e);
+        }
+      }
     },
 
     async runAll() {
@@ -2077,30 +2196,38 @@ function createE2ERunnerStore() {
       const executors = def.executors;
       const ctx: FutarchyE2EContext = {};
 
-      scenario.update(s => ({
+      updateActive(s => ({
         ...s,
         status: 'running',
         startedAt: Date.now(),
-        completedAt: undefined
+        completedAt: undefined,
+        steps: s.steps.map(st => ({
+          ...st,
+          status: 'pending',
+          txSignature: undefined,
+          result: undefined,
+          error: undefined,
+          durationMs: undefined
+        }))
       }));
 
-      const steps = get(scenario).steps;
+      const steps = get(active)!.steps;
       let failed = false;
 
       for (let i = 0; i < steps.length; i++) {
         if (failed) {
-          scenario.update(s => {
-            const newSteps = [...s.steps];
-            newSteps[i] = { ...newSteps[i], status: 'skipped' };
-            return { ...s, steps: newSteps };
+          updateActive(s => {
+            const ns = [...s.steps];
+            ns[i] = { ...ns[i], status: 'skipped' };
+            return { ...s, steps: ns };
           });
           continue;
         }
 
-        scenario.update(s => {
-          const newSteps = [...s.steps];
-          newSteps[i] = { ...newSteps[i], status: 'running' };
-          return { ...s, steps: newSteps };
+        updateActive(s => {
+          const ns = [...s.steps];
+          ns[i] = { ...ns[i], status: 'running' };
+          return { ...s, steps: ns };
         });
 
         const stepId = steps[i].id;
@@ -2108,15 +2235,15 @@ function createE2ERunnerStore() {
         const startTime = Date.now();
 
         if (!executor) {
-          scenario.update(s => {
-            const newSteps = [...s.steps];
-            newSteps[i] = {
-              ...newSteps[i],
+          updateActive(s => {
+            const ns = [...s.steps];
+            ns[i] = {
+              ...ns[i],
               status: 'error',
               error: `No executor for step: ${stepId}`,
               durationMs: Date.now() - startTime
             };
-            return { ...s, steps: newSteps };
+            return { ...s, steps: ns };
           });
           failed = true;
           continue;
@@ -2124,33 +2251,33 @@ function createE2ERunnerStore() {
 
         try {
           const result = await executor(ctx, deployer);
-          scenario.update(s => {
-            const newSteps = [...s.steps];
-            newSteps[i] = {
-              ...newSteps[i],
+          updateActive(s => {
+            const ns = [...s.steps];
+            ns[i] = {
+              ...ns[i],
               status: 'success',
               txSignature: result.txSignature,
               result: result.result,
               durationMs: Date.now() - startTime
             };
-            return { ...s, steps: newSteps };
+            return { ...s, steps: ns };
           });
         } catch (err: any) {
-          scenario.update(s => {
-            const newSteps = [...s.steps];
-            newSteps[i] = {
-              ...newSteps[i],
+          updateActive(s => {
+            const ns = [...s.steps];
+            ns[i] = {
+              ...ns[i],
               status: 'error',
               error: err.message || 'Unknown error',
               durationMs: Date.now() - startTime
             };
-            return { ...s, steps: newSteps };
+            return { ...s, steps: ns };
           });
           failed = true;
         }
       }
 
-      scenario.update(s => ({
+      updateActive(s => ({
         ...s,
         status: failed ? 'failed' : 'completed',
         completedAt: Date.now()

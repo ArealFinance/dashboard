@@ -15,9 +15,7 @@
   // Scenario selection
   $: availableScenarios = e2eRunner.scenarios;
   let selectedScenarioId = '';
-  $: if (!selectedScenarioId && availableScenarios.length > 0) {
-    selectedScenarioId = availableScenarios[0].id;
-  }
+  $: if (!selectedScenarioId) selectedScenarioId = scenario.id;
 
   function handleSelectScenario(id: string) {
     selectedScenarioId = id;
