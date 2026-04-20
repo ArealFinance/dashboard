@@ -2514,13 +2514,47 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
   },
 };
 
+import {
+  createYdBasicSteps,
+  ydBasicExecutors,
+  createYdFairnessSteps,
+  ydFairnessExecutors
+} from './e2e-yd';
+import {
+  createYdSaturatingSteps,
+  ydSaturatingExecutors
+} from './e2e-yd-saturating';
+import {
+  createYdPublishNegativesSteps,
+  ydPublishNegativesExecutors
+} from './e2e-yd-publish-negatives';
+import {
+  createYdVestingSteps,
+  ydVestingExecutors
+} from './e2e-yd-vesting';
+import {
+  createYdExceedsSteps,
+  ydExceedsExecutors
+} from './e2e-yd-exceeds';
+import {
+  createYdContractNegativesSteps,
+  ydContractNegativesExecutors
+} from './e2e-yd-contract-negatives';
+
 const SCENARIOS: ScenarioDefinition[] = [
   { id: 'ot-lifecycle', name: 'OT Full Lifecycle', steps: createOtE2ESteps, executors: stepExecutors },
   { id: 'futarchy-governance', name: 'Futarchy Governance', steps: createFutarchyE2ESteps, executors: futarchyStepExecutors },
   { id: 'rwt-lifecycle', name: 'RWT Mint & Manage', steps: createRwtE2ESteps, executors: rwtStepExecutors },
   { id: 'dex-lifecycle', name: 'DEX Pool & Swap', steps: createDexE2ESteps, executors: dexStepExecutors },
   { id: 'cl-lifecycle', name: 'DEX Concentrated', steps: createConcentratedE2ESteps, executors: concentratedStepExecutors },
-  { id: 'vault-swap', name: 'RWT ↔ DEX (Vault Swap)', steps: createVaultSwapE2ESteps, executors: vaultSwapStepExecutors }
+  { id: 'vault-swap', name: 'RWT ↔ DEX (Vault Swap)', steps: createVaultSwapE2ESteps, executors: vaultSwapStepExecutors },
+  { id: 'yd-basic', name: 'YD Basic (init → fund → claim → close)', steps: createYdBasicSteps, executors: ydBasicExecutors },
+  { id: 'yd-fairness', name: 'YD Per-Deposit Fairness (Alice→Bob)', steps: createYdFairnessSteps, executors: ydFairnessExecutors },
+  { id: 'yd-saturating', name: 'YD Saturating Subtraction (shrunk cumulative)', steps: createYdSaturatingSteps, executors: ydSaturatingExecutors },
+  { id: 'yd-publish-negatives', name: 'YD publish_root Negatives (5 errors)', steps: createYdPublishNegativesSteps, executors: ydPublishNegativesExecutors },
+  { id: 'yd-vesting', name: 'YD Vesting Numeric Correctness', steps: createYdVestingSteps, executors: ydVestingExecutors },
+  { id: 'yd-exceeds', name: 'YD ExceedsMaxClaim Cap', steps: createYdExceedsSteps, executors: ydExceedsExecutors },
+  { id: 'yd-contract-negatives', name: 'YD Contract Negatives (H5-H8)', steps: createYdContractNegativesSteps, executors: ydContractNegativesExecutors }
 ];
 
 // ---- Store ----

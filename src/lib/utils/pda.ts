@@ -175,6 +175,63 @@ export function findBinArrayPda(
   );
 }
 
+// =========================================================================
+// Yield Distribution PDAs
+// =========================================================================
+
+/**
+ * Derive YD DistributionConfig PDA (singleton)
+ */
+export function findYdConfigPda(programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('dist_config')],
+    programId
+  );
+}
+
+/**
+ * Derive MerkleDistributor PDA
+ * Seeds: ["merkle_dist", ot_mint]
+ */
+export function findMerkleDistributorPda(
+  programId: PublicKey,
+  otMint: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('merkle_dist'), otMint.toBuffer()],
+    programId
+  );
+}
+
+/**
+ * Derive YD Accumulator PDA
+ * Seeds: ["accumulator", ot_mint]
+ */
+export function findYdAccumulatorPda(
+  programId: PublicKey,
+  otMint: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('accumulator'), otMint.toBuffer()],
+    programId
+  );
+}
+
+/**
+ * Derive ClaimStatus PDA
+ * Seeds: ["claim_status", distributor, claimant]
+ */
+export function findClaimStatusPda(
+  programId: PublicKey,
+  distributor: PublicKey,
+  claimant: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('claim_status'), distributor.toBuffer(), claimant.toBuffer()],
+    programId
+  );
+}
+
 /**
  * Derive Associated Token Account address
  */

@@ -25,7 +25,7 @@
     { label: 'Futarchy', href: '/futarchy', icon: Vote, enabled: true, description: 'Layer 2' },
     { label: 'RWT Engine', href: '/rwt', icon: CircleDollarSign, enabled: true, description: 'Layer 3' },
     { label: 'Native DEX', href: '/dex', icon: ArrowLeftRight, enabled: true, description: 'Layer 4-5' },
-    { label: 'Yield Distribution', href: '/yd', icon: GitBranch, enabled: false, description: 'Layer 7' },
+    { label: 'Yield Distribution', href: '/yd', icon: GitBranch, enabled: true, description: 'Layer 7' },
     { label: 'Bots', href: '/bots', icon: Bot, enabled: false, description: 'Layer 8-9' },
   ];
 
