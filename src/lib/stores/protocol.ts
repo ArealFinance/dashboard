@@ -3,6 +3,7 @@ import idl from '$lib/idl/ownership-token.json';
 import futarchyIdl from '$lib/idl/futarchy.json';
 import rwtIdl from '$lib/idl/rwt-engine.json';
 import dexIdl from '$lib/idl/native-dex.json';
+import ydIdl from '$lib/idl/yield-distribution.json';
 
 /**
  * Protocol program descriptor
@@ -63,10 +64,10 @@ export const PROTOCOL_PROGRAMS: ProtocolProgram[] = [
     name: 'RWT Engine',
     programId: rwtIdl.metadata?.address ?? null,
     status: rwtIdl.metadata?.address ? 'deployed' : 'pending',
-    layer: '3',
+    layer: '3, 6',
     idlPath: '$lib/idl/rwt-engine.json',
-    instructions: 10,
-    description: 'Reward token minting, NAV pricing, vault management',
+    instructions: 11,
+    description: 'Reward token minting, NAV pricing, vault management, DEX vault swaps',
     binaryName: 'rwt_engine'
   },
   {
@@ -83,12 +84,13 @@ export const PROTOCOL_PROGRAMS: ProtocolProgram[] = [
   {
     id: 'yd',
     name: 'Yield Distribution',
-    programId: null,
-    status: 'pending',
+    programId: ydIdl.metadata?.address ?? null,
+    status: ydIdl.metadata?.address ? 'deployed' : 'pending',
     layer: '7',
-    idlPath: null,
-    instructions: 11,
-    description: 'Merkle streams, RWT distribution to OT holders'
+    idlPath: '$lib/idl/yield-distribution.json',
+    instructions: 10,
+    description: 'Merkle streams, RWT distribution to OT holders',
+    binaryName: 'yield_distribution'
   }
 ];
 
@@ -103,10 +105,10 @@ export const CPI_LINKS: CpiLink[] = [
   { from: 'futarchy', to: 'ot', instruction: 'accept_authority', description: 'Accept governance authority transfer', status: 'pending' },
 
   // RWT Engine -> DEX
-  { from: 'rwt', to: 'dex', instruction: 'vault_swap', description: 'Swap vault assets via DEX', status: 'pending' },
+  { from: 'rwt', to: 'dex', instruction: 'vault_swap', description: 'Swap vault assets via DEX', status: 'active' },
 
   // RWT Engine -> YD
-  { from: 'rwt', to: 'yd', instruction: 'claim_yield', description: 'Claim yield from distribution', status: 'pending' },
+  { from: 'rwt', to: 'yd', instruction: 'claim_yield', description: 'Claim yield from distribution', status: 'active' },
 
   // YD -> DEX
   { from: 'yd', to: 'dex', instruction: 'convert_to_rwt', description: 'Convert revenue to RWT via DEX swap', status: 'pending' },

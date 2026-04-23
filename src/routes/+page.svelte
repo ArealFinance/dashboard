@@ -131,16 +131,16 @@
           </div>
           <div class="module-meta">
             <span class="module-name">Off-chain Bots</span>
-            <span class="module-layer">Layer 8-9</span>
+            <span class="module-layer">Layer 5, 7-9</span>
           </div>
           <div class="module-status status-pending">
             <Clock size={12} />
-            Pending
+            2/6 ready
           </div>
         </div>
-        <p class="module-desc">Cranks, rebalancer, merkle publisher</p>
+        <p class="module-desc">Merkle publisher + pool rebalancer active; cranks and nexus pending</p>
         <div class="module-footer">
-          <span class="module-stat">6 services</span>
+          <span class="module-stat">2/6 services</span>
         </div>
       </div>
     </div>
