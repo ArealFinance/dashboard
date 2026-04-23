@@ -1,10 +1,12 @@
 <script lang="ts">
   import { get } from 'svelte/store';
+  import { onMount } from 'svelte';
   import { PublicKey } from '@solana/web3.js';
   import { rwtStore, rwtClient, rwtProgramId } from '$lib/stores/rwt';
+  import { dexProgramId } from '$lib/stores/dex';
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
-  import { findRwtVaultPda, findRwtDistConfigPda, TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { findRwtVaultPda, findRwtDistConfigPda, findDexConfigPda, findPoolStatePda, TOKEN_PROGRAM_ID } from '$lib/utils/pda';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
   import TxStatus from '$lib/components/TxStatus.svelte';
@@ -39,6 +41,129 @@
   let configTxStatus: 'idle'|'signing'|'sending'|'confirming'|'success'|'error' = 'idle';
   let configTxSig = '';
   let configTxError = '';
+
+  // Vault Swap
+  let swapAmountIn = '';
+  let swapSlippagePct = '1';
+  let swapDirection: 'a_to_b' | 'b_to_a' = 'a_to_b';
+  let swapPoolMintA = '';
+  let swapPoolMintB = '';
+  let swapTxStatus: 'idle'|'signing'|'sending'|'confirming'|'success'|'error' = 'idle';
+  let swapTxSig = '';
+  let swapTxError = '';
+
+  // Vault token balances
+  interface VaultTokenBalance {
+    mint: string;
+    amount: bigint;
+    ata: string;
+  }
+  let vaultBalances: VaultTokenBalance[] = [];
+  let loadingBalances = false;
+
+  $: isManager = vault && vault.manager !== '11111111111111111111111111111112';
+
+  async function loadVaultBalances() {
+    if (!vault) return;
+    loadingBalances = true;
+    try {
+      const conn = get(connection);
+      const [vaultPda] = findRwtVaultPda(rwtProgramId);
+      const resp = await conn.getTokenAccountsByOwner(vaultPda, { programId: TOKEN_PROGRAM_ID });
+      vaultBalances = resp.value.map((item: any) => {
+        const data = item.account.data;
+        const mint = new PublicKey(data.slice(0, 32)).toBase58();
+        const amountBytes = data.slice(64, 72);
+        const amount = BigInt(new DataView(amountBytes.buffer, amountBytes.byteOffset, 8).getBigUint64(0, true).toString());
+        return { mint, amount, ata: item.pubkey.toBase58() };
+      });
+    } catch (err: any) {
+      console.error('Failed to load vault balances:', err);
+    } finally {
+      loadingBalances = false;
+    }
+  }
+
+  onMount(() => {
+    loadVaultBalances();
+  });
+
+  async function handleVaultSwap() {
+    if (!vault) return;
+    const deployer = devKeys.getActiveKeypair();
+    if (!deployer) { swapTxError = 'No active dev keypair'; swapTxStatus = 'error'; return; }
+
+    swapTxStatus = 'signing';
+    try {
+      const conn = get(connection);
+      const client = get(rwtClient);
+      const [vaultPda] = findRwtVaultPda(rwtProgramId);
+      const amountIn = Math.floor((Number(swapAmountIn) || 0) * 1_000_000);
+      if (amountIn <= 0) throw new Error('Amount must be > 0');
+
+      const mintA = new PublicKey(swapPoolMintA);
+      const mintB = new PublicKey(swapPoolMintB);
+      const a_to_b = swapDirection === 'a_to_b';
+
+      // Determine input/output mints based on direction
+      const mintIn = a_to_b ? mintA : mintB;
+      const mintOut = a_to_b ? mintB : mintA;
+
+      // Vault ATAs
+      const vaultTokenIn = getAtaAddress(vaultPda, mintIn);
+      const vaultTokenOut = getAtaAddress(vaultPda, mintOut);
+
+      // Pool PDA
+      const [poolPda] = findPoolStatePda(mintA, mintB, dexProgramId);
+
+      // Read pool state to get vault addresses (offset 8+1+32+32=73 for vault_a, 105 for vault_b)
+      const poolInfo = await conn.getAccountInfo(poolPda);
+      if (!poolInfo) throw new Error('Pool not found');
+      const poolVaultA = new PublicKey(poolInfo.data.slice(73, 105));
+      const poolVaultB = new PublicKey(poolInfo.data.slice(105, 137));
+      const poolVaultIn = a_to_b ? poolVaultA : poolVaultB;
+      const poolVaultOut = a_to_b ? poolVaultB : poolVaultA;
+
+      // DEX config
+      const [dexConfigPda] = findDexConfigPda(dexProgramId);
+
+      // Read areal_fee_destination from DexConfig (offset 109..141)
+      const configInfo = await conn.getAccountInfo(dexConfigPda);
+      if (!configInfo) throw new Error('DexConfig not found');
+      const arealFeeAta = new PublicKey(configInfo.data.slice(109, 141));
+
+      // Slippage: min_amount_out = 0 for now (or calculate from reserves)
+      const slippageBps = Math.floor((Number(swapSlippagePct) || 1) * 100);
+      // For simplicity, use 1 as min_amount_out (non-zero required by contract)
+      const minAmountOut = 1;
+
+      const tx = client.buildTransaction('vault_swap', {
+        accounts: {
+          manager: deployer.publicKey,
+          rwt_vault: vaultPda,
+          vault_token_in: vaultTokenIn,
+          vault_token_out: vaultTokenOut,
+          dex_config: dexConfigPda,
+          pool_state: poolPda,
+          pool_vault_in: poolVaultIn,
+          pool_vault_out: poolVaultOut,
+          areal_fee_account: arealFeeAta,
+          dex_program: dexProgramId,
+          token_program: TOKEN_PROGRAM_ID,
+        },
+        args: { amount_in: amountIn, min_amount_out: minAmountOut, a_to_b }
+      });
+
+      swapTxStatus = 'sending';
+      swapTxSig = await signAndSendTransaction(conn, tx, [deployer]);
+      swapTxStatus = 'success';
+      swapAmountIn = '';
+      await Promise.all([rwtStore.refresh(), loadVaultBalances()]);
+    } catch (err: any) {
+      swapTxError = err.message;
+      swapTxStatus = 'error';
+    }
+  }
 
   $: bpsSum = (Number(bookBps) || 0) + (Number(liqBps) || 0) + (Number(revBps) || 0);
   $: bpsValid = bpsSum === 10000;
@@ -281,6 +406,72 @@
       </div>
     </div>
   </div>
+
+  <!-- Vault Swap (full width) -->
+  <div class="card" style="margin-top: var(--space-4);">
+    <div class="card-header">
+      <h3>Vault Swap (Manager Only)</h3>
+      {#if !isManager}
+        <span class="badge badge-warning">No manager set</span>
+      {/if}
+    </div>
+    <div class="card-body">
+      <!-- Vault Token Balances -->
+      <div class="balances-section">
+        <div class="section-label">
+          Vault Token Balances
+          <button class="btn-icon" on:click={loadVaultBalances} title="Refresh">&#x21bb;</button>
+        </div>
+        {#if loadingBalances}
+          <p class="text-muted">Loading...</p>
+        {:else if vaultBalances.length === 0}
+          <p class="text-muted">No token accounts found for vault PDA.</p>
+        {:else}
+          <div class="balance-list">
+            {#each vaultBalances as bal}
+              <div class="balance-row">
+                <span class="balance-mint" title={bal.mint}>{bal.mint.slice(0, 8)}...{bal.mint.slice(-4)}</span>
+                <span class="balance-amount">{(Number(bal.amount) / 1_000_000).toFixed(6)}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <!-- Swap Form -->
+      <div class="swap-form">
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="form-label">Pool Mint A</label>
+            <input class="form-input" type="text" bind:value={swapPoolMintA} placeholder="Token A mint pubkey" />
+          </div>
+          <div class="form-group" style="flex:2">
+            <label class="form-label">Pool Mint B</label>
+            <input class="form-input" type="text" bind:value={swapPoolMintB} placeholder="Token B mint pubkey" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Direction</label>
+            <select class="form-input" bind:value={swapDirection}>
+              <option value="a_to_b">A &rarr; B</option>
+              <option value="b_to_a">B &rarr; A</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Amount In (tokens)</label>
+            <input class="form-input" type="number" bind:value={swapAmountIn} placeholder="10" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Slippage %</label>
+            <input class="form-input" type="number" bind:value={swapSlippagePct} placeholder="1" />
+          </div>
+        </div>
+        <button class="btn btn-primary" on:click={handleVaultSwap} disabled={!isManager}>Execute Swap</button>
+        <TxStatus status={swapTxStatus} signature={swapTxSig} error={swapTxError} />
+      </div>
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -315,4 +506,20 @@
   .bps-sum.invalid { color: var(--color-danger); }
 
   .text-muted { color: var(--color-text-muted); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: 500; }
+  .badge-warning { background: var(--color-warning, #f59e0b); color: white; }
+
+  .balances-section { margin-bottom: var(--space-4); }
+  .section-label { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-secondary); margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-2); }
+  .btn-icon { background: none; border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; padding: 2px 6px; font-size: var(--text-sm); color: var(--color-text); }
+
+  .balance-list { display: flex; flex-direction: column; gap: var(--space-1); }
+  .balance-row { display: flex; justify-content: space-between; padding: var(--space-2) var(--space-3); background: var(--color-bg); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-sm); }
+  .balance-mint { color: var(--color-text-secondary); }
+  .balance-amount { font-weight: 600; }
+
+  .swap-form { border-top: 1px solid var(--color-border); padding-top: var(--space-4); }
+
+  select.form-input { appearance: auto; }
 </style>
