@@ -156,7 +156,10 @@
           {#each $otStore.treasuryTokenAccounts as ta}
             <tr>
               <td><CopyAddress address={ta.mint.toBase58()} chars={6} /></td>
-              <td class="mono">{ta.balance.toString()}</td>
+              <!-- N-4: format consistently with other BigInt amounts in app.
+                   Assumes 6 decimals (USDC-style) — the common case for
+                   treasury balances. -->
+              <td class="mono">{formatUsdc(ta.balance)}</td>
             </tr>
           {/each}
         </tbody>

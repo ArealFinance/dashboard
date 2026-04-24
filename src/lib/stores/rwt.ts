@@ -60,10 +60,14 @@ export interface RwtState {
   error: string | null;
 }
 
-function bytesToPubkeyString(bytes: any): string {
+function bytesToPubkeyString(bytes: Uint8Array | number[]): string {
   const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   return new PublicKey(arr).toBase58();
 }
+
+// N-1 audit note: `Record<string, any>` inputs below mirror ArlexClient.fetch()'s
+// current untyped return. Proper shape typing awaits an IDL→TS codegen pass —
+// until then, parsers serve as the runtime typing boundary.
 
 function parseVault(data: Record<string, any>): RwtVaultState {
   return {

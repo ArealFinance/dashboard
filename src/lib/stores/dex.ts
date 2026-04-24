@@ -112,7 +112,7 @@ export interface DexState {
   error: string | null;
 }
 
-function bytesToPubkeyString(bytes: any): string {
+function bytesToPubkeyString(bytes: Uint8Array | number[]): string {
   const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   return new PublicKey(arr).toBase58();
 }
@@ -120,6 +120,12 @@ function bytesToPubkeyString(bytes: any): string {
 function isZeroPubkey(s: string): boolean {
   return s === '11111111111111111111111111111111';
 }
+
+// N-1 audit note: `Record<string, any>` inputs for parsers below reflect
+// ArlexClient.fetch()'s current untyped return. Full typing (proper generated
+// IDL→TS interfaces) would replace these with shape-checked accesses; deferred
+// to a follow-up IDL-codegen pass. snake_case keys mirror on-chain struct
+// field names.
 
 function parseConfig(data: Record<string, any>): DexConfigState {
   return {

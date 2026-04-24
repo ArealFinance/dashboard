@@ -53,15 +53,11 @@ export async function createMint(
 }
 
 /**
- * Derive ATA address (same as pda.ts findAta but exported separately for clarity)
+ * Derive ATA address. Single source of truth lives in pda.ts; re-exported
+ * here under the `getAtaAddress` name for existing call sites (N-2).
  */
-export function getAtaAddress(owner: PublicKey, mint: PublicKey): PublicKey {
-  const [ata] = PublicKey.findProgramAddressSync(
-    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-    ASSOCIATED_TOKEN_PROGRAM_ID
-  );
-  return ata;
-}
+import { findAta } from './pda';
+export const getAtaAddress = findAta;
 
 /**
  * Create an Associated Token Account.
