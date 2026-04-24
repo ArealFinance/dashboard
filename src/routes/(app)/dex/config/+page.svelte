@@ -39,6 +39,20 @@
     const deployer = devKeys.getActiveKeypair();
     if (!deployer) { configTxError = 'No active dev keypair'; configTxStatus = 'error'; return; }
 
+    // L-12: reject NaN / out-of-range inputs before building tx
+    const feeBps = Number.parseInt(newFeeBps, 10);
+    const lpShareBps = Number.parseInt(newLpShareBps, 10);
+    if (!Number.isFinite(feeBps) || feeBps < 0 || feeBps > 10000) {
+      configTxError = 'base_fee_bps must be an integer 0–10000';
+      configTxStatus = 'error';
+      return;
+    }
+    if (!Number.isFinite(lpShareBps) || lpShareBps < 0 || lpShareBps > 10000) {
+      configTxError = 'lp_fee_share_bps must be an integer 0–10000';
+      configTxStatus = 'error';
+      return;
+    }
+
     configTxStatus = 'signing';
     try {
       const conn = get(connection);
@@ -52,8 +66,8 @@
           dex_config: configPda,
         },
         args: {
-          base_fee_bps: parseInt(newFeeBps),
-          lp_fee_share_bps: parseInt(newLpShareBps),
+          base_fee_bps: feeBps,
+          lp_fee_share_bps: lpShareBps,
           rebalancer: Array.from(rebalancerKey.toBytes()),
           is_active: newIsActive,
         }

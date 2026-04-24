@@ -1,40 +1,29 @@
 import {
   Connection,
   Keypair,
+  PublicKey,
   Transaction,
 } from '@solana/web3.js';
 
 /**
- * Sign, send, and confirm a transaction using HTTP polling (no WebSocket needed).
- * Resends transaction periodically until confirmed or expired.
+ * Wallet provider interface (matches Phantom/Solflare shape used in wallet.ts).
  */
-export async function signAndSendTransaction(
+export interface WalletSigner {
+  publicKey: PublicKey | null;
+  signTransaction: (tx: Transaction) => Promise<Transaction>;
+}
+
+/**
+ * Confirm-and-resend loop: polls `getSignatureStatuses` and resends the raw tx
+ * every 5 s until the slot is confirmed or the last valid block height passes.
+ * HTTP-only (no WebSocket required).
+ */
+async function confirmWithResend(
   connection: Connection,
-  transaction: Transaction,
-  signers: Keypair[]
+  rawTx: Uint8Array,
+  signature: string,
+  lastValidBlockHeight: number,
 ): Promise<string> {
-  if (signers.length === 0) {
-    throw new Error('At least one signer is required');
-  }
-
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  transaction.recentBlockhash = blockhash;
-  transaction.lastValidBlockHeight = lastValidBlockHeight;
-  transaction.feePayer = signers[0].publicKey;
-
-  transaction.sign(...signers);
-
-  const rawTx = transaction.serialize();
-
-  console.log('[tx] sending...');
-  const signature = await connection.sendRawTransaction(rawTx, {
-    skipPreflight: false,
-    preflightCommitment: 'confirmed',
-    maxRetries: 0, // we handle retries ourselves
-  });
-  console.log('[tx] sent:', signature.slice(0, 20) + '...');
-
-  // Poll + resend loop
   const startMs = Date.now();
   const timeoutMs = 120_000;
   let attempt = 0;
@@ -52,7 +41,6 @@ export async function signAndSendTransaction(
           throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
         }
         if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
-          console.log('[tx] confirmed in', ((Date.now() - startMs) / 1000).toFixed(1) + 's');
           return signature;
         }
       }
@@ -69,7 +57,6 @@ export async function signAndSendTransaction(
           maxRetries: 0,
         });
         lastSendMs = Date.now();
-        console.log('[tx] resent at attempt', attempt);
       } catch {
         // ignore resend errors
       }
@@ -91,4 +78,63 @@ export async function signAndSendTransaction(
   }
 
   throw new Error(`Transaction confirmation timeout after ${timeoutMs}ms`);
+}
+
+/**
+ * Sign with local Keypair(s) and send. Used for dev-tools / e2e scenarios.
+ */
+export async function signAndSendTransaction(
+  connection: Connection,
+  transaction: Transaction,
+  signers: Keypair[]
+): Promise<string> {
+  if (signers.length === 0) {
+    throw new Error('At least one signer is required (use sendWalletTransaction for wallet-signed flows)');
+  }
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
+  transaction.feePayer = signers[0].publicKey;
+
+  transaction.sign(...signers);
+
+  const rawTx = transaction.serialize();
+  const signature = await connection.sendRawTransaction(rawTx, {
+    skipPreflight: false,
+    preflightCommitment: 'confirmed',
+    maxRetries: 0,
+  });
+
+  return confirmWithResend(connection, rawTx, signature, lastValidBlockHeight);
+}
+
+/**
+ * Sign with a wallet provider (Phantom/Solflare) and send. Used for user flows
+ * where the fee payer is the connected wallet (H-8).
+ */
+export async function sendWalletTransaction(
+  connection: Connection,
+  transaction: Transaction,
+  signer: WalletSigner,
+): Promise<string> {
+  if (!signer.publicKey) {
+    throw new Error('Wallet is not connected');
+  }
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
+  transaction.feePayer = signer.publicKey;
+
+  const signed = await signer.signTransaction(transaction);
+  const rawTx = signed.serialize();
+
+  const signature = await connection.sendRawTransaction(rawTx, {
+    skipPreflight: false,
+    preflightCommitment: 'confirmed',
+    maxRetries: 0,
+  });
+
+  return confirmWithResend(connection, rawTx, signature, lastValidBlockHeight);
 }

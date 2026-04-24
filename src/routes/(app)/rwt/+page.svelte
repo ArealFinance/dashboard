@@ -4,7 +4,8 @@
   import { rwtStore, rwtClient, rwtProgramId } from '$lib/stores/rwt';
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
-  import { findRwtVaultPda, findRwtDistConfigPda, TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { findRwtVaultPda, findRwtDistConfigPda, TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, USDC_MINTS } from '$lib/utils/pda';
+  import { network } from '$lib/stores/network';
   import { formatAddress } from '$lib/utils/format';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
@@ -26,9 +27,18 @@
   let mintTxSig = '';
   let mintTxError = '';
 
-  $: navUsd = vault ? Number(vault.navBookValue) / 1_000_000 : 1;
-  $: capitalUsd = vault ? Number(vault.totalInvestedCapital) / 1_000_000 : 0;
-  $: supplyTokens = vault ? Number(vault.totalRwtSupply) / 1_000_000 : 0;
+  // H-6: BigInt-safe display conversion. Split into whole + fractional parts
+  // (6-decimal scale) before casting to Number; avoids precision loss when the
+  // total exceeds 2^53 / 1e6 ≈ 9e9.
+  function microToUsd(v: bigint | undefined, fallback = 0): number {
+    if (v === undefined) return fallback;
+    const whole = v / 1_000_000n;
+    const frac = v % 1_000_000n;
+    return Number(whole) + Number(frac) / 1_000_000;
+  }
+  $: navUsd = vault ? microToUsd(vault.navBookValue, 1) : 1;
+  $: capitalUsd = vault ? microToUsd(vault.totalInvestedCapital) : 0;
+  $: supplyTokens = vault ? microToUsd(vault.totalRwtSupply) : 0;
 
   // Mint preview
   $: mintAmountNum = Number(mintAmount) || 0;
@@ -50,7 +60,7 @@
       const client = get(rwtClient);
 
       const rwtMintKeypair = Keypair.generate();
-      const usdcMint = new PublicKey('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
+      const usdcMint = USDC_MINTS[$network];
 
       const [vaultPda] = findRwtVaultPda(rwtProgramId);
       const [distConfigPda] = findRwtDistConfigPda(rwtProgramId);
@@ -100,7 +110,7 @@
       const [vaultPda] = findRwtVaultPda(rwtProgramId);
       const rwtMint = new PublicKey(vault.rwtMint);
 
-      const usdcMint = new PublicKey('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
+      const usdcMint = USDC_MINTS[$network];
       const userUsdcAta = getAtaAddress(deployer.publicKey, usdcMint);
       const userRwtAta = getAtaAddress(deployer.publicKey, rwtMint);
       const capitalAcc = new PublicKey(vault.capitalAccumulatorAta);

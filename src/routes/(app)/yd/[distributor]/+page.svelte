@@ -136,7 +136,7 @@
       </div>
       <div class="info-row">
         <span class="info-label">Last Fund</span>
-        <span class="info-value mono">{formatTimestamp(Number(d.lastFundTs))}</span>
+        <span class="info-value mono">{formatTimestamp(d.lastFundTs)}</span>
       </div>
       <div class="info-row">
         <span class="info-label">Current Vesting Fraction</span>

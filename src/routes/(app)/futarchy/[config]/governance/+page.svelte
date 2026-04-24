@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getContext } from 'svelte';
+  import type { FutarchyStore } from '$lib/stores/futarchy';
   import { PublicKey } from '@solana/web3.js';
   import { Shield, ArrowRightLeft, Check } from 'lucide-svelte';
   import { wallet } from '$lib/stores/wallet';
@@ -12,7 +13,7 @@
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import TxStatus from '$lib/components/TxStatus.svelte';
 
-  const store: any = getContext('futarchyStore');
+  const store = getContext<FutarchyStore>('futarchyStore')!;
 
   $: config = $store.config;
   $: authority = config ? bytesToBase58(config.authority) : '';

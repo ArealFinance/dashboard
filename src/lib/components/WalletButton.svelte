@@ -8,9 +8,22 @@
   let availableWallets: WalletName[] = [];
   let showDropdown = false;
   let connectError = '';
+  let errorTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function setErrorWithAutoClear(msg: string, durationMs = 6000) {
+    connectError = msg;
+    if (errorTimeout) clearTimeout(errorTimeout);
+    errorTimeout = setTimeout(() => {
+      connectError = '';
+      errorTimeout = null;
+    }, durationMs);
+  }
 
   onMount(() => {
     availableWallets = wallet.getAvailableWallets();
+    return () => {
+      if (errorTimeout) clearTimeout(errorTimeout);
+    };
   });
 
   async function handleConnect(name: WalletName) {
@@ -19,7 +32,8 @@
     try {
       await wallet.connect(name);
     } catch (err: any) {
-      connectError = err.message || 'Failed to connect';
+      // L-11: auto-clear toast so it doesn't linger after user retries/dismisses
+      setErrorWithAutoClear(err.message || 'Failed to connect');
     }
   }
 

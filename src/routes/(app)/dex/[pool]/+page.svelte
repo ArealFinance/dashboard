@@ -4,13 +4,23 @@
   import { formatAddress } from '$lib/utils/format';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
 
-  $: poolAddr = ($page.params as any).pool ?? '';
+  $: poolAddr = ($page.params as { pool?: string }).pool ?? '';
   $: pool = $dexStore.pools.find(p => p.pda === poolAddr);
 
-  $: priceDisplay = pool ? (Number(pool.reserveB) / Number(pool.reserveA)).toFixed(6) : '—';
-  $: tvlA = pool ? Number(pool.reserveA) / 1_000_000 : 0;
-  $: tvlB = pool ? Number(pool.reserveB) / 1_000_000 : 0;
-  $: feesAccum = pool ? Number(pool.totalFeesAccumulated) / 1_000_000 : 0;
+  // H-6: BigInt-safe price + TVL. Scale before Number cast so reserves above
+  // 2^53 don't silently lose precision.
+  function microToNumber(v: bigint | undefined, fallback = 0): number {
+    if (v === undefined) return fallback;
+    const whole = v / 1_000_000n;
+    const frac = v % 1_000_000n;
+    return Number(whole) + Number(frac) / 1_000_000;
+  }
+  $: priceDisplay = pool && pool.reserveA > 0n
+    ? (Number((pool.reserveB * 1_000_000n) / pool.reserveA) / 1_000_000).toFixed(6)
+    : '—';
+  $: tvlA = pool ? microToNumber(pool.reserveA) : 0;
+  $: tvlB = pool ? microToNumber(pool.reserveB) : 0;
+  $: feesAccum = pool ? microToNumber(pool.totalFeesAccumulated) : 0;
 </script>
 
 <div class="page">

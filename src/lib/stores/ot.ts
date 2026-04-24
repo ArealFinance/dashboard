@@ -2,6 +2,7 @@ import { writable, get, derived } from 'svelte/store';
 import { PublicKey } from '@solana/web3.js';
 import { ArlexClient } from '$lib/arlex-client/index.mjs';
 import { connection, network } from './network';
+import { trimNullBytes as trimNull } from '$lib/utils/format';
 import idl from '$lib/idl/ownership-token.json';
 import {
   findOtConfigPda,
@@ -111,7 +112,9 @@ export const otList = createOtListStore();
  * Create OT state store for a specific mint address
  */
 export function createOtStore(mintAddress: string) {
-  const mint = new PublicKey(mintAddress);
+  // M-13: mint is mutable so the store can be pointed at a different OT instance
+  // when the user navigates to /ot/<newMint> without a full remount.
+  let mint = new PublicKey(mintAddress);
   const initial: OtState = {
     mint,
     otConfig: null,
@@ -233,19 +236,25 @@ export function createOtStore(mintAddress: string) {
     subscriptionIds.length = 0;
   }
 
+  async function setMint(newMintAddress: string) {
+    if (newMintAddress === mint.toBase58()) return;
+    cleanup();
+    mint = new PublicKey(newMintAddress);
+    set({
+      ...initial,
+      mint,
+      loading: true,
+    });
+    await fetchAll();
+    setupSubscriptions();
+  }
+
   return {
     subscribe,
     refresh: fetchAll,
     setupSubscriptions,
-    cleanup
+    cleanup,
+    setMint,
   };
 }
 
-// Helper
-function trimNull(bytes: Uint8Array): string {
-  let end = bytes.length;
-  for (let i = 0; i < bytes.length; i++) {
-    if (bytes[i] === 0) { end = i; break; }
-  }
-  return new TextDecoder().decode(bytes.subarray(0, end));
-}

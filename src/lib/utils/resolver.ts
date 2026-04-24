@@ -9,6 +9,8 @@ import {
   USDC_MINTS
 } from '$lib/utils/pda';
 import { formatAddress, bytesToBase58, trimNullBytes } from '$lib/utils/format';
+import { dexProgramId } from '$lib/stores/dex';
+import { futarchyProgramId } from '$lib/stores/futarchy';
 import type { OtState } from '$lib/stores/ot';
 import type { Cluster } from '$lib/stores/network';
 
@@ -191,7 +193,6 @@ function resolveDestinationAddress(address: string, otState: OtState): ResolvedA
  */
 function resolveDexPda(address: string): ResolvedAddress | null {
   try {
-    const { dexProgramId } = require('$lib/stores/dex');
     const [configPda] = findDexConfigPda(dexProgramId);
     if (configPda.toBase58() === address) {
       return { label: 'DexConfig', type: 'pda', module: 'dex' };
@@ -201,7 +202,7 @@ function resolveDexPda(address: string): ResolvedAddress | null {
       return { label: 'PoolCreators', type: 'pda', module: 'dex' };
     }
   } catch {
-    // DEX module not available
+    // DEX PDA derivation failed (invalid program id)
   }
   return null;
 }
@@ -215,7 +216,6 @@ export function resolveAuthorityType(
 ): { type: 'wallet' | 'futarchy' | 'unknown'; label: string } {
   try {
     // Check if authority is the Futarchy config PDA for this OT mint
-    const { futarchyProgramId } = require('$lib/stores/futarchy');
     const [futarchyConfigPda] = findFutarchyConfigPda(otMint, futarchyProgramId);
     if (futarchyConfigPda.toBase58() === authorityAddress) {
       return {
@@ -224,7 +224,7 @@ export function resolveAuthorityType(
       };
     }
   } catch {
-    // Futarchy module not available
+    // PDA derivation failed
   }
   return {
     type: 'wallet',

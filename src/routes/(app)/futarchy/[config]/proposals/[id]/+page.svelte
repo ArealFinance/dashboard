@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getContext } from 'svelte';
+  import type { FutarchyStore } from '$lib/stores/futarchy';
   import { page } from '$app/stores';
   import { PublicKey } from '@solana/web3.js';
   import { Check, X, Play, ArrowLeft } from 'lucide-svelte';
@@ -9,14 +10,14 @@
   import { findOtGovernancePda, findOtConfigPda, findOtTreasuryPda, findRevenueConfigPda, findAta,
     TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '$lib/utils/pda';
   import { bytesToBase58, formatTimestamp, isZeroAddress, formatAddress } from '$lib/utils/format';
-  import { signAndSendTransaction } from '$lib/utils/tx';
+  import { sendWalletTransaction } from '$lib/utils/tx';
   import { connection } from '$lib/stores/network';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import TxStatus from '$lib/components/TxStatus.svelte';
 
-  const store: any = getContext('futarchyStore');
+  const store = getContext<FutarchyStore>('futarchyStore')!;
 
-  $: proposalIdStr = ($page.params as any).id ?? '0';
+  $: proposalIdStr = ($page.params as { id?: string }).id ?? '0';
   $: proposalId = BigInt(proposalIdStr);
   $: proposal = $store.proposals.find((p: any) => p.proposalId === proposalId);
   $: config = $store.config;
@@ -47,7 +48,7 @@
         args: {}
       });
       txStatus = 'sending';
-      const sig = await signAndSendTransaction($connection, tx, []);
+      const sig = await sendWalletTransaction($connection, tx, $wallet.provider!);
       txSignature = sig;
       txStatus = 'confirming';
       await $connection.confirmTransaction(sig, 'confirmed');
@@ -71,7 +72,7 @@
         args: {}
       });
       txStatus = 'sending';
-      const sig = await signAndSendTransaction($connection, tx, []);
+      const sig = await sendWalletTransaction($connection, tx, $wallet.provider!);
       txSignature = sig;
       txStatus = 'confirming';
       await $connection.confirmTransaction(sig, 'confirmed');
@@ -145,7 +146,7 @@
       });
 
       txStatus = 'sending';
-      const sig = await signAndSendTransaction($connection, tx, []);
+      const sig = await sendWalletTransaction($connection, tx, $wallet.provider!);
       txSignature = sig;
       txStatus = 'confirming';
       await $connection.confirmTransaction(sig, 'confirmed');
@@ -177,9 +178,9 @@
         <div class="field-grid">
           <div class="field"><span class="fl">Proposer</span> <CopyAddress address={proposal.proposer} chars={8} /></div>
           <div class="field"><span class="fl">OT Mint</span> <CopyAddress address={proposal.otMint} chars={8} /></div>
-          <div class="field"><span class="fl">Created</span> <span class="fv">{formatTimestamp(Number(proposal.createdTs))}</span></div>
+          <div class="field"><span class="fl">Created</span> <span class="fv">{formatTimestamp(proposal.createdTs)}</span></div>
           {#if proposal.executedTs > 0n}
-            <div class="field"><span class="fl">Executed</span> <span class="fv">{formatTimestamp(Number(proposal.executedTs))}</span></div>
+            <div class="field"><span class="fl">Executed</span> <span class="fv">{formatTimestamp(proposal.executedTs)}</span></div>
           {/if}
 
           {#if proposal.proposalType === 0 || proposal.proposalType === 1}

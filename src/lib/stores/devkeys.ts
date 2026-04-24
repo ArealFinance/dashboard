@@ -1,11 +1,36 @@
 import { writable, derived, get } from 'svelte/store';
 import { Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { connection } from './network';
-import { browser } from '$app/environment';
+import { browser, dev } from '$app/environment';
 import bs58 from 'bs58';
 
+// SECURITY (C-3): Dev keypairs hold actual secret keys. In dev we persist them
+// to sessionStorage so they survive page navigations but die when the tab closes,
+// drastically shrinking the exfiltration window vs. localStorage. In production
+// we refuse to persist secrets at all (in-memory only, lost on reload).
 const STORAGE_KEY = 'areal_dev_keypairs';
 const ACTIVE_KEY = 'areal_dev_active';
+
+/**
+ * Use sessionStorage (dev) or an in-memory null-backed store (prod) to avoid
+ * ever writing private material to durable client storage.
+ */
+function storage(): Storage | null {
+  if (!browser) return null;
+  if (!dev) return null;
+  return sessionStorage;
+}
+
+// One-time cleanup: purge any legacy keypairs that lived in localStorage before
+// C-3 was applied (so old entries don't linger across sessions).
+if (browser) {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(ACTIVE_KEY);
+  } catch {
+    // ignore storage access errors
+  }
+}
 
 /**
  * Stored keypair (serializable to localStorage)
@@ -23,9 +48,10 @@ export interface DevKeypairInfo {
 }
 
 function loadKeypairs(): StoredKeypair[] {
-  if (!browser) return [];
+  const s = storage();
+  if (!s) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = s.getItem(STORAGE_KEY);
     if (!raw) return [];
     return JSON.parse(raw);
   } catch {
@@ -34,21 +60,24 @@ function loadKeypairs(): StoredKeypair[] {
 }
 
 function saveKeypairs(keypairs: StoredKeypair[]) {
-  if (!browser) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(keypairs));
+  const s = storage();
+  if (!s) return;
+  s.setItem(STORAGE_KEY, JSON.stringify(keypairs));
 }
 
 function loadActiveName(): string | null {
-  if (!browser) return null;
-  return localStorage.getItem(ACTIVE_KEY) || null;
+  const s = storage();
+  if (!s) return null;
+  return s.getItem(ACTIVE_KEY) || null;
 }
 
 function saveActiveName(name: string | null) {
-  if (!browser) return;
+  const s = storage();
+  if (!s) return;
   if (name) {
-    localStorage.setItem(ACTIVE_KEY, name);
+    s.setItem(ACTIVE_KEY, name);
   } else {
-    localStorage.removeItem(ACTIVE_KEY);
+    s.removeItem(ACTIVE_KEY);
   }
 }
 

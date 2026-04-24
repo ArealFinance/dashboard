@@ -28,6 +28,14 @@
   }
 
   let rows: DestRow[] = [];
+
+  // L-13: Escape closes any open modal
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      if (showQuickFill) { showQuickFill = false; e.preventDefault(); }
+      else if (showConfirm) { showConfirm = false; e.preventDefault(); }
+    }
+  }
   let showConfirm = false;
   let showQuickFill = false;
   let quickFillIndex = -1;
@@ -213,6 +221,8 @@
     }
   }
 </script>
+
+<svelte:window on:keydown={handleKeydown} />
 
 <div class="dest-page">
   <section class="card">

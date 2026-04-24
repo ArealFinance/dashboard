@@ -4,7 +4,6 @@ import { ArlexClient } from '$lib/arlex-client/index.mjs';
 import { connection } from './network';
 import idl from '$lib/idl/futarchy.json';
 import { findFutarchyConfigPda, findProposalPda } from '$lib/utils/pda';
-import { bytesToBase58 } from '$lib/utils/format';
 
 // Program ID — will be updated after deployment
 const PROGRAM_ID = new PublicKey(idl.metadata?.address ?? '11111111111111111111111111111112');
@@ -212,3 +211,9 @@ export function createFutarchyStore(configAddress: string) {
 
   return { subscribe, refresh: fetchAll, setupSubscriptions, cleanup };
 }
+
+/**
+ * Typed interface for the store returned by createFutarchyStore.
+ * Consumers pass this to getContext<FutarchyStore>('futarchyStore') (H-7).
+ */
+export type FutarchyStore = ReturnType<typeof createFutarchyStore>;

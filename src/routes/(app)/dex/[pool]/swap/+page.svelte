@@ -10,7 +10,7 @@
   import { signAndSendTransaction } from '$lib/utils/tx';
   import TxStatus from '$lib/components/TxStatus.svelte';
 
-  $: poolAddr = ($page.params as any).pool ?? '';
+  $: poolAddr = ($page.params as { pool?: string }).pool ?? '';
   $: pool = $dexStore.pools.find(p => p.pda === poolAddr);
   $: config = $dexStore.config;
 

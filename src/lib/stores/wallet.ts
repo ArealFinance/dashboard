@@ -7,6 +7,11 @@ import { browser } from '$app/environment';
  * No external wallet-adapter packages needed.
  */
 
+// L-8: typed wallet events. Phantom/Solflare emit 'connect' with PublicKey,
+// 'disconnect' with no args, 'accountChanged' with PublicKey | null.
+export type WalletEvent = 'connect' | 'disconnect' | 'accountChanged';
+export type WalletEventHandler = (publicKey?: PublicKey | null) => void;
+
 export interface WalletProvider {
   publicKey: PublicKey | null;
   isConnected: boolean;
@@ -14,9 +19,17 @@ export interface WalletProvider {
   signAllTransactions: (txs: Transaction[]) => Promise<Transaction[]>;
   connect: () => Promise<{ publicKey: PublicKey }>;
   disconnect: () => Promise<void>;
-  on: (event: string, handler: (...args: any[]) => void) => void;
-  off: (event: string, handler: (...args: any[]) => void) => void;
+  on: (event: WalletEvent, handler: WalletEventHandler) => void;
+  off: (event: WalletEvent, handler: WalletEventHandler) => void;
 }
+
+// L-9: shape of injected window providers. A separate type (not a Window
+// extension) because other libs in the global scope already define `phantom`
+// with slightly different optionality — declaring here would conflict.
+type WindowWithWallets = {
+  phantom?: { solana?: WalletProvider & { isPhantom?: boolean } };
+  solflare?: WalletProvider & { isSolflare?: boolean };
+};
 
 export type WalletName = 'phantom' | 'solflare';
 
@@ -32,7 +45,7 @@ function detectProviders(): { name: WalletName; provider: WalletProvider }[] {
   if (!browser) return [];
   const results: { name: WalletName; provider: WalletProvider }[] = [];
 
-  const win = window as any;
+  const win = window as unknown as WindowWithWallets;
   if (win.phantom?.solana?.isPhantom) {
     results.push({ name: 'phantom', provider: win.phantom.solana });
   }

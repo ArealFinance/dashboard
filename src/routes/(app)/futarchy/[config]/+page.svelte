@@ -1,11 +1,12 @@
 <script lang="ts">
   import { getContext } from 'svelte';
+  import type { FutarchyStore } from '$lib/stores/futarchy';
   import { FileText, ExternalLink } from 'lucide-svelte';
   import { PROPOSAL_TYPES, PROPOSAL_STATUSES } from '$lib/stores/futarchy';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import { bytesToBase58, formatTimestamp, isZeroAddress } from '$lib/utils/format';
 
-  const store: any = getContext('futarchyStore');
+  const store = getContext<FutarchyStore>('futarchyStore')!;
 
   $: config = $store.config;
   $: proposals = $store.proposals;
@@ -78,7 +79,7 @@
               {#if p.proposalType !== 2}
                 <span class="amount">{p.amount.toString()}</span>
               {/if}
-              <span class="ts">{formatTimestamp(Number(p.createdTs))}</span>
+              <span class="ts">{formatTimestamp(p.createdTs)}</span>
               <ExternalLink size={12} />
             </a>
           {/each}

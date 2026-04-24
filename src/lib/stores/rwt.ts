@@ -4,7 +4,6 @@ import { ArlexClient } from '$lib/arlex-client/index.mjs';
 import { connection } from './network';
 import idl from '$lib/idl/rwt-engine.json';
 import { findRwtVaultPda, findRwtDistConfigPda } from '$lib/utils/pda';
-import { bytesToBase58 } from '$lib/utils/format';
 
 // Program ID — will be updated after deployment
 const PROGRAM_ID = new PublicKey(idl.metadata?.address ?? '11111111111111111111111111111112');

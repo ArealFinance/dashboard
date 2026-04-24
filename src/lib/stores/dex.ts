@@ -153,7 +153,13 @@ function parseCreators(data: Record<string, any>): PoolCreatorsState {
 function parsePool(data: Record<string, any>, pda: PublicKey): PoolStateData {
   const reserveA = BigInt(data.reserve_a.toString());
   const reserveB = BigInt(data.reserve_b.toString());
-  const price = reserveA > 0n ? Number(reserveB) / Number(reserveA) : 0;
+  // H-6: BigInt-safe price calc. Divide BigInt by BigInt (6-decimal scale) and
+  // convert to Number only for display. Loses no precision until reserves
+  // exceed Number.MAX_SAFE_INTEGER / 1_000_000 ≈ 9e9 (still plenty for any
+  // realistic pool).
+  const price = reserveA > 0n
+    ? Number((reserveB * 1_000_000n) / reserveA) / 1_000_000
+    : 0;
   return {
     poolType: data.pool_type,
     tokenAMint: bytesToPubkeyString(data.token_a_mint),

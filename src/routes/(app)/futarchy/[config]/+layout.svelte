@@ -4,9 +4,9 @@
   import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-svelte';
   import { createFutarchyStore } from '$lib/stores/futarchy';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
-  import { bytesToBase58 } from '$lib/utils/format';
+  import { bytesToBase58, trimNullBytes as trimNull } from '$lib/utils/format';
 
-  $: configAddress = ($page.params as any).config ?? '';
+  $: configAddress = ($page.params as { config?: string }).config ?? '';
   $: currentPath = $page.url.pathname;
 
   let store = createFutarchyStore(configAddress || '11111111111111111111111111111111');
@@ -30,13 +30,6 @@
   });
 
   onDestroy(() => { store.cleanup(); });
-
-  function trimNull(bytes: any): string {
-    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    let end = arr.length;
-    for (let i = 0; i < arr.length; i++) { if (arr[i] === 0) { end = i; break; } }
-    return new TextDecoder().decode(arr.subarray(0, end));
-  }
 </script>
 
 <div class="futarchy-layout">

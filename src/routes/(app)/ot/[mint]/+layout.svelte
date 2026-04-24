@@ -4,6 +4,7 @@
   import { writable } from 'svelte/store';
   import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-svelte';
   import { createOtStore } from '$lib/stores/ot';
+  import { trimNullBytes as trimNull } from '$lib/utils/format';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
 
   $: mintAddress = $page.params.mint ?? '';
@@ -11,6 +12,14 @@
 
   let otStore = createOtStore(mintAddress || '11111111111111111111111111111111');
   setContext('otStore', otStore);
+
+  // M-13: point the existing store at the new mint when the URL param changes,
+  // instead of leaving a stale clone in context.
+  let lastMintAddress = mintAddress;
+  $: if (mintAddress && mintAddress !== lastMintAddress) {
+    otStore.setMint(mintAddress);
+    lastMintAddress = mintAddress;
+  }
 
   // Navigation tabs
   $: basePath = `/ot/${mintAddress}`;
@@ -81,16 +90,6 @@
   {/if}
 </div>
 
-<script context="module" lang="ts">
-  function trimNull(bytes: Uint8Array | Buffer | number[]): string {
-    const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    let end = buf.length;
-    for (let i = 0; i < buf.length; i++) {
-      if (buf[i] === 0) { end = i; break; }
-    }
-    return new TextDecoder().decode(buf.subarray(0, end));
-  }
-</script>
 
 <style>
   .ot-layout {

@@ -96,7 +96,13 @@
   onMount(() => {
     fetchHealth();
     const interval = setInterval(fetchHealth, 10000);
-    return () => clearInterval(interval);
+    // M-16: keep balance polling tied to this view only, so we don't hold an
+    // interval open after the user leaves /dev.
+    devKeys.startPolling();
+    return () => {
+      clearInterval(interval);
+      devKeys.stopPolling();
+    };
   });
 </script>
 

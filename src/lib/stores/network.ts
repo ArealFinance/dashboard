@@ -48,9 +48,13 @@ export const allClusters: Cluster[] = ['localnet', 'devnet', 'mainnet-beta'];
 export const rpcEndpoint = derived(network, ($network) => RPC_ENDPOINTS[$network]);
 
 export const connection = derived(rpcEndpoint, ($rpcEndpoint) => {
+  // M-12: @solana/web3.js types expect `wsEndpoint: string`, but passing `false`
+  // is the officially supported way to disable WebSocket subscriptions and fall
+  // back to HTTP polling. The `as unknown as string` cast silences the type
+  // mismatch without suppressing real type errors elsewhere.
   return new Connection($rpcEndpoint, {
     commitment: 'confirmed',
-    wsEndpoint: false as any,        // disable WebSocket — use HTTP polling only
+    wsEndpoint: false as unknown as string,
     confirmTransactionInitialTimeout: 120000,
   });
 });

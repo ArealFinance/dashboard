@@ -1,16 +1,17 @@
 <script lang="ts">
   import { getContext } from 'svelte';
+  import type { FutarchyStore } from '$lib/stores/futarchy';
   import { goto } from '$app/navigation';
   import { PublicKey, SystemProgram } from '@solana/web3.js';
   import { wallet } from '$lib/stores/wallet';
   import { futarchyClient, futarchyProgramId } from '$lib/stores/futarchy';
   import { findProposalPda } from '$lib/utils/pda';
   import { isValidAddress, stringToFixedBytes } from '$lib/utils/format';
-  import { signAndSendTransaction } from '$lib/utils/tx';
+  import { sendWalletTransaction } from '$lib/utils/tx';
   import { connection } from '$lib/stores/network';
   import TxStatus from '$lib/components/TxStatus.svelte';
 
-  const store: any = getContext('futarchyStore');
+  const store = getContext<FutarchyStore>('futarchyStore')!;
 
   // Tab selection
   let activeTab: 0 | 1 | 2 = 0; // MintOt, SpendTreasury, UpdateDest
@@ -69,7 +70,7 @@
       });
 
       txStatus = 'sending';
-      const sig = await signAndSendTransaction($connection, tx, []);
+      const sig = await sendWalletTransaction($connection, tx, $wallet.provider!);
       txSignature = sig;
       txStatus = 'confirming';
       await $connection.confirmTransaction(sig, 'confirmed');

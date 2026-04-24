@@ -47,6 +47,32 @@ export function base58ToBytes(address: string): Uint8Array {
 }
 
 /**
+ * Parse a decimal-formatted amount string into a BigInt of the given precision.
+ *
+ * Example: parseDecimal("1.5", 6) === 1_500_000n
+ *          parseDecimal("0.0000001", 6) === 0n  (truncates, never rounds up)
+ *          parseDecimal("", 6) === 0n
+ *
+ * Avoids floating-point multiplication (`Number(s) * 10**n`) which silently
+ * loses precision for large numbers or high decimals (M-11).
+ */
+export function parseDecimal(value: string, decimals: number): bigint {
+  const trimmed = value.trim();
+  if (!trimmed) return 0n;
+  // Accept optional leading sign
+  const match = trimmed.match(/^(-?)(\d*)(?:\.(\d*))?$/);
+  if (!match) return 0n;
+  const [, sign, intPart, fracPartRaw = ''] = match;
+  // Truncate fractional part to `decimals` digits; pad with zeros if shorter
+  const fracPart = fracPartRaw.slice(0, decimals).padEnd(decimals, '0');
+  const combined = (intPart || '0') + fracPart;
+  // Strip leading zeros except single zero
+  const normalized = combined.replace(/^0+(?=\d)/, '') || '0';
+  const magnitude = BigInt(normalized);
+  return sign === '-' ? -magnitude : magnitude;
+}
+
+/**
  * Trim null bytes from a fixed-size UTF-8 byte array (e.g., [u8; 32] labels)
  */
 export function trimNullBytes(bytes: Uint8Array | Buffer | number[]): string {

@@ -9,7 +9,7 @@
   import { connection, network } from '$lib/stores/network';
   import TxStatus from '$lib/components/TxStatus.svelte';
   import {
-    formatAmount, formatUsdc, formatCooldown, bytesToBase58, isValidAddress, formatAddress
+    formatAmount, formatUsdc, formatCooldown, bytesToBase58, isValidAddress, formatAddress, parseDecimal
   } from '$lib/utils/format';
   import {
     findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
@@ -79,7 +79,8 @@
       const [governancePda] = findOtGovernancePda(otMint, programId);
 
       // Calculate raw amount from human input
-      const rawAmount = BigInt(Math.floor(Number(mintAmount) * (10 ** decimals)));
+      // M-11: string-based decimal parsing avoids float precision loss
+      const rawAmount = parseDecimal(mintAmount, decimals);
 
       // Derive recipient ATA
       const recipientAta = findAta(recipient, otMint);
