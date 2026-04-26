@@ -168,6 +168,174 @@ describe('parseProgramDataLog', () => {
   });
 });
 
+/**
+ * DASH-1: parser coverage for the 5 event kinds that lacked explicit tests.
+ *   - LiquidityHoldingFunded
+ *   - CompoundYieldExecuted
+ *   - TreasuryYieldClaimed
+ *   - LiquidityHoldingInitialized
+ *   - DistributorFunded (Layer 7 — covered indirectly elsewhere; keep here
+ *     for completeness)
+ *
+ * Each kind has a happy-path parse + a truncation null path.
+ */
+describe('parseProgramDataLog — additional event kinds (DASH-1)', () => {
+  const baseEvent = {
+    kind: 'DistributorFunded' as const,
+    signature: 'sig-dash1',
+    slot: 200,
+    blockTime: 1_700_000_100,
+  };
+
+  it('parses LiquidityHoldingFunded body (80 bytes)', async () => {
+    const disc = await eventDiscriminator('LiquidityHoldingFunded');
+    const liquidityHolding = pk().toBytes();
+    const otMint = pk().toBytes();
+    const body = concatBytes(
+      liquidityHolding,
+      otMint,
+      u64Le(5_000_000n),    // amount
+      i64Le(1_700_000_100n) // timestamp
+    );
+    const data = concatBytes(disc, body);
+    const line = `Program data: ${bytesToBase64(data)}`;
+    const ev = await parseProgramDataLog(line, baseEvent);
+    expect(ev).not.toBeNull();
+    if (ev?.kind === 'LiquidityHoldingFunded') {
+      expect(ev.amount).toBe(5_000_000n);
+      expect(ev.timestamp).toBe(1_700_000_100n);
+    } else {
+      throw new Error('Expected LiquidityHoldingFunded');
+    }
+  });
+
+  it('returns null for truncated LiquidityHoldingFunded', async () => {
+    const disc = await eventDiscriminator('LiquidityHoldingFunded');
+    const data = concatBytes(disc, new Uint8Array(40));
+    const line = `Program data: ${bytesToBase64(data)}`;
+    expect(await parseProgramDataLog(line, baseEvent)).toBeNull();
+  });
+
+  it('parses CompoundYieldExecuted body (89 bytes)', async () => {
+    const disc = await eventDiscriminator('CompoundYieldExecuted');
+    const pool = pk().toBytes();
+    const otMint = pk().toBytes();
+    const body = concatBytes(
+      pool,
+      otMint,
+      u64Le(7_000_000n),               // rwt_claimed
+      new Uint8Array([1]),             // rwt_side (u8)
+      u64Le(50_000_000n),              // reserve_after
+      i64Le(1_700_000_200n),           // timestamp
+    );
+    const data = concatBytes(disc, body);
+    const line = `Program data: ${bytesToBase64(data)}`;
+    const ev = await parseProgramDataLog(line, baseEvent);
+    if (ev?.kind === 'CompoundYieldExecuted') {
+      expect(ev.rwtClaimed).toBe(7_000_000n);
+      expect(ev.rwtSide).toBe(1);
+      expect(ev.reserveAfter).toBe(50_000_000n);
+    } else {
+      throw new Error('Expected CompoundYieldExecuted');
+    }
+  });
+
+  it('returns null for truncated CompoundYieldExecuted', async () => {
+    const disc = await eventDiscriminator('CompoundYieldExecuted');
+    const data = concatBytes(disc, new Uint8Array(60));
+    const line = `Program data: ${bytesToBase64(data)}`;
+    expect(await parseProgramDataLog(line, baseEvent)).toBeNull();
+  });
+
+  it('parses TreasuryYieldClaimed body (80 bytes)', async () => {
+    const disc = await eventDiscriminator('TreasuryYieldClaimed');
+    const otMint = pk().toBytes();
+    const ydOtMint = pk().toBytes();
+    const body = concatBytes(
+      otMint,
+      ydOtMint,
+      u64Le(3_000_000n),
+      i64Le(1_700_000_300n),
+    );
+    const data = concatBytes(disc, body);
+    const line = `Program data: ${bytesToBase64(data)}`;
+    const ev = await parseProgramDataLog(line, baseEvent);
+    if (ev?.kind === 'TreasuryYieldClaimed') {
+      expect(ev.amount).toBe(3_000_000n);
+      expect(ev.timestamp).toBe(1_700_000_300n);
+    } else {
+      throw new Error('Expected TreasuryYieldClaimed');
+    }
+  });
+
+  it('returns null for truncated TreasuryYieldClaimed', async () => {
+    const disc = await eventDiscriminator('TreasuryYieldClaimed');
+    const data = concatBytes(disc, new Uint8Array(40));
+    const line = `Program data: ${bytesToBase64(data)}`;
+    expect(await parseProgramDataLog(line, baseEvent)).toBeNull();
+  });
+
+  it('parses LiquidityHoldingInitialized body (104 bytes)', async () => {
+    const disc = await eventDiscriminator('LiquidityHoldingInitialized');
+    const lh = pk().toBytes();
+    const lhAta = pk().toBytes();
+    const payer = pk().toBytes();
+    const body = concatBytes(
+      lh,
+      lhAta,
+      payer,
+      i64Le(1_700_000_400n),
+    );
+    const data = concatBytes(disc, body);
+    const line = `Program data: ${bytesToBase64(data)}`;
+    const ev = await parseProgramDataLog(line, baseEvent);
+    if (ev?.kind === 'LiquidityHoldingInitialized') {
+      expect(ev.timestamp).toBe(1_700_000_400n);
+    } else {
+      throw new Error('Expected LiquidityHoldingInitialized');
+    }
+  });
+
+  it('returns null for truncated LiquidityHoldingInitialized', async () => {
+    const disc = await eventDiscriminator('LiquidityHoldingInitialized');
+    const data = concatBytes(disc, new Uint8Array(60));
+    const line = `Program data: ${bytesToBase64(data)}`;
+    expect(await parseProgramDataLog(line, baseEvent)).toBeNull();
+  });
+
+  it('parses DistributorFunded body (full 72 bytes)', async () => {
+    const disc = await eventDiscriminator('DistributorFunded');
+    const otMint = pk().toBytes();
+    const body = concatBytes(
+      otMint,
+      u64Le(1_000_000n),    // amount
+      u64Le(50_000n),       // protocol_fee
+      u64Le(1_000_000n),    // total_funded
+      u64Le(0n),            // locked_vested
+      i64Le(1_700_000_500n) // timestamp
+    );
+    const data = concatBytes(disc, body);
+    const line = `Program data: ${bytesToBase64(data)}`;
+    const ev = await parseProgramDataLog(line, baseEvent);
+    if (ev?.kind === 'DistributorFunded') {
+      expect(ev.amount).toBe(1_000_000n);
+      expect(ev.protocolFee).toBe(50_000n);
+      expect(ev.totalFunded).toBe(1_000_000n);
+      expect(ev.timestamp).toBe(1_700_000_500n);
+    } else {
+      throw new Error('Expected DistributorFunded');
+    }
+  });
+
+  it('returns null for truncated DistributorFunded', async () => {
+    const disc = await eventDiscriminator('DistributorFunded');
+    // body < 64 bytes (otMint + amount = 40 — one u64 short)
+    const data = concatBytes(disc, new Uint8Array(40));
+    const line = `Program data: ${bytesToBase64(data)}`;
+    expect(await parseProgramDataLog(line, baseEvent)).toBeNull();
+  });
+});
+
 describe('fetchEvents', () => {
   it('returns empty array on RPC failure', async () => {
     const conn = {

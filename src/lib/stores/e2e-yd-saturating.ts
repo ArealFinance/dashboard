@@ -1,5 +1,5 @@
 /**
- * Saturating-subtraction E2E scenario (plan/layer-07-review-tester.md §C1).
+ * Saturating-subtraction E2E scenario (Layer 7 tester review §C1).
  *
  * Reproduces the "holder sold their OT between snapshots" case that the
  * contract's `calculate_claimable` handles via `saturating_sub`. Specifically:

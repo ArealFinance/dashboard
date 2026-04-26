@@ -149,6 +149,20 @@ export function formatCooldown(secondsRemaining: number): string {
 }
 
 /**
+ * Resolve the localnet RPC URL from PUBLIC_LOCALNET_RPC_URL env, falling back
+ * to the standard Solana test-validator endpoint. Mirrors the same lookup
+ * performed in `stores/network.ts` so explorer links use the same RPC the
+ * dashboard talks to.
+ */
+function resolveLocalnetRpcUrl(): string {
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    const raw = (import.meta.env as ImportMetaEnv).PUBLIC_LOCALNET_RPC_URL;
+    if (typeof raw === 'string' && raw.trim().length > 0) return raw.trim();
+  }
+  return 'http://127.0.0.1:8899';
+}
+
+/**
  * Get the explorer URL for a transaction or address
  */
 export function explorerUrl(
@@ -157,6 +171,12 @@ export function explorerUrl(
   cluster: string = 'devnet'
 ): string {
   const base = 'https://explorer.solana.com';
-  const clusterParam = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster === 'localnet' ? 'custom&customUrl=https://rpc.areal.finance' : cluster}`;
+  let clusterParam = '';
+  if (cluster === 'localnet') {
+    const customUrl = encodeURIComponent(resolveLocalnetRpcUrl());
+    clusterParam = `?cluster=custom&customUrl=${customUrl}`;
+  } else if (cluster !== 'mainnet-beta') {
+    clusterParam = `?cluster=${cluster}`;
+  }
   return `${base}/${type}/${value}${clusterParam}`;
 }

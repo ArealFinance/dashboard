@@ -25,6 +25,12 @@ declare global {
     readonly PUBLIC_CRANK_CLAIM_URL?: string;
     /** Optional merkle-publisher proof-store base URL. */
     readonly PUBLIC_PROOF_STORE_URL?: string;
+    /**
+     * Optional localnet RPC URL. Defaults to `http://127.0.0.1:8899` (the
+     * standard Solana test-validator endpoint). Operators that run a remote
+     * staging localnet point this at their own RPC.
+     */
+    readonly PUBLIC_LOCALNET_RPC_URL?: string;
   }
 
   interface ImportMeta {

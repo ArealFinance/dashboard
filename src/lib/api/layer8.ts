@@ -521,6 +521,228 @@ export async function fetchTreasuryYieldEvents(
 }
 
 // -----------------------------------------------------------------------------
+// On-chain account readers (IDL-aware; pinned to contract state.rs layouts)
+// -----------------------------------------------------------------------------
+
+/**
+ * Parsed RwtVault state. Layout pinned to
+ * `contracts/rwt-engine/src/state.rs::RwtVault` (267 bytes total = 8 disc +
+ * 259 body). If the contract struct changes, this reader and the bot's
+ * counterpart in `bots/convert-and-fund-crank/src/readers.ts` must change
+ * together.
+ */
+export interface RwtVaultState {
+  totalInvestedCapital: bigint;
+  totalRwtSupply: bigint;
+  navBookValue: bigint;
+  capitalAccumulatorAta: string;
+  rwtMint: string;
+  authority: string;
+  manager: string;
+  arealFeeDestination: string;
+  bump: number;
+}
+
+/**
+ * Read and parse the singleton `RwtVault` PDA. Returns null if the PDA hasn't
+ * been initialized.
+ *
+ * Body layout (offsets after 8-byte discriminator):
+ *   0..16   total_invested_capital (u128 LE)
+ *   16..24  total_rwt_supply        (u64  LE)
+ *   24..32  nav_book_value          (u64  LE)
+ *   32..64  capital_accumulator_ata ([u8;32])
+ *   64..96  rwt_mint                ([u8;32])
+ *   96..128 authority               ([u8;32])
+ *   128..160 pending_authority      ([u8;32])
+ *   160     has_pending             (bool)
+ *   161..193 manager                ([u8;32])
+ *   193..225 pause_authority        ([u8;32])
+ *   225     mint_paused             (bool)
+ *   226..258 areal_fee_destination  ([u8;32])
+ *   258     bump                    (u8)
+ */
+export async function readRwtVault(
+  connection: Connection,
+  pda: PublicKey,
+): Promise<RwtVaultState | null> {
+  let info;
+  try {
+    info = await connection.getAccountInfo(pda, 'confirmed');
+  } catch {
+    return null;
+  }
+  if (!info) return null;
+  if (info.data.length < 8 + 259) return null;
+  const body = new Uint8Array(
+    info.data.buffer,
+    info.data.byteOffset + 8,
+    info.data.byteLength - 8,
+  );
+  const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+  return {
+    totalInvestedCapital: view.getBigUint64(0, true) | (view.getBigUint64(8, true) << 64n),
+    totalRwtSupply: view.getBigUint64(16, true),
+    navBookValue: view.getBigUint64(24, true),
+    capitalAccumulatorAta: readPubkey(body, 32),
+    rwtMint: readPubkey(body, 64),
+    authority: readPubkey(body, 96),
+    manager: readPubkey(body, 161),
+    arealFeeDestination: readPubkey(body, 226),
+    bump: body[258],
+  };
+}
+
+/**
+ * Parsed `RwtDistributionConfig` singleton.
+ * Layout pinned to `contracts/rwt-engine/src/state.rs::RwtDistributionConfig`
+ * (79 bytes total = 8 disc + 71 body):
+ *   0..2    book_value_bps              (u16 LE)
+ *   2..4    liquidity_bps               (u16 LE)
+ *   4..6    protocol_revenue_bps        (u16 LE)
+ *   6..38   liquidity_destination       ([u8;32])
+ *   38..70  protocol_revenue_destination([u8;32])
+ *   70      bump                        (u8)
+ */
+export interface RwtDistributionConfigState {
+  bookValueBps: number;
+  liquidityBps: number;
+  protocolRevenueBps: number;
+  liquidityDestination: string;
+  protocolRevenueDestination: string;
+  bump: number;
+}
+
+export async function readRwtDistributionConfig(
+  connection: Connection,
+  pda: PublicKey,
+): Promise<RwtDistributionConfigState | null> {
+  let info;
+  try {
+    info = await connection.getAccountInfo(pda, 'confirmed');
+  } catch {
+    return null;
+  }
+  if (!info) return null;
+  if (info.data.length < 8 + 71) return null;
+  const body = new Uint8Array(
+    info.data.buffer,
+    info.data.byteOffset + 8,
+    info.data.byteLength - 8,
+  );
+  const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+  return {
+    bookValueBps: view.getUint16(0, true),
+    liquidityBps: view.getUint16(2, true),
+    protocolRevenueBps: view.getUint16(4, true),
+    liquidityDestination: readPubkey(body, 6),
+    protocolRevenueDestination: readPubkey(body, 38),
+    bump: body[70],
+  };
+}
+
+/**
+ * Parsed `MerkleDistributor` state (per-OT).
+ * Layout pinned to `contracts/yield-distribution/src/state.rs::MerkleDistributor`
+ * (194 bytes total = 8 disc + 186 body).
+ */
+export interface MerkleDistributorState {
+  otMint: string;
+  rewardVault: string;
+  accumulator: string;
+  merkleRoot: Uint8Array;
+  maxTotalClaim: bigint;
+  totalClaimed: bigint;
+  totalFunded: bigint;
+  lockedVested: bigint;
+  lastFundTs: bigint;
+  vestingPeriodSecs: bigint;
+  epoch: bigint;
+  isActive: boolean;
+  bump: number;
+}
+
+export async function readMerkleDistributor(
+  connection: Connection,
+  pda: PublicKey,
+): Promise<MerkleDistributorState | null> {
+  let info;
+  try {
+    info = await connection.getAccountInfo(pda, 'confirmed');
+  } catch {
+    return null;
+  }
+  if (!info) return null;
+  if (info.data.length < 8 + 186) return null;
+  const body = new Uint8Array(
+    info.data.buffer,
+    info.data.byteOffset + 8,
+    info.data.byteLength - 8,
+  );
+  const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+  return {
+    otMint: readPubkey(body, 0),
+    rewardVault: readPubkey(body, 32),
+    accumulator: readPubkey(body, 64),
+    merkleRoot: body.slice(96, 128),
+    maxTotalClaim: view.getBigUint64(128, true),
+    totalClaimed: view.getBigUint64(136, true),
+    totalFunded: view.getBigUint64(144, true),
+    lockedVested: view.getBigUint64(152, true),
+    lastFundTs: view.getBigInt64(160, true),
+    vestingPeriodSecs: view.getBigInt64(168, true),
+    epoch: view.getBigUint64(176, true),
+    isActive: body[184] !== 0,
+    bump: body[185],
+  };
+}
+
+/**
+ * Parsed YD `DistributionConfig` singleton.
+ * Layout pinned to `contracts/yield-distribution/src/state.rs::DistributionConfig`
+ * (149 bytes total = 8 disc + 141 body).
+ */
+export interface DistributionConfigState {
+  authority: string;
+  publishAuthority: string;
+  protocolFeeBps: number;
+  minDistributionAmount: bigint;
+  arealFeeDestination: string;
+  isActive: boolean;
+  bump: number;
+}
+
+export async function readDistributionConfig(
+  connection: Connection,
+  pda: PublicKey,
+): Promise<DistributionConfigState | null> {
+  let info;
+  try {
+    info = await connection.getAccountInfo(pda, 'confirmed');
+  } catch {
+    return null;
+  }
+  if (!info) return null;
+  if (info.data.length < 8 + 141) return null;
+  const body = new Uint8Array(
+    info.data.buffer,
+    info.data.byteOffset + 8,
+    info.data.byteLength - 8,
+  );
+  const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+  return {
+    authority: readPubkey(body, 0),
+    // pending_authority at 32..64, has_pending at 64
+    publishAuthority: readPubkey(body, 65),
+    protocolFeeBps: view.getUint16(97, true),
+    minDistributionAmount: view.getBigUint64(99, true),
+    arealFeeDestination: readPubkey(body, 107),
+    isActive: body[139] !== 0,
+    bump: body[140],
+  };
+}
+
+// -----------------------------------------------------------------------------
 // LiquidityHolding state reader
 // -----------------------------------------------------------------------------
 

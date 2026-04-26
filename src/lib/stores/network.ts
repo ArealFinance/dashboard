@@ -6,8 +6,20 @@ const STORAGE_KEY = 'areal_network';
 
 export type Cluster = 'localnet' | 'devnet' | 'mainnet-beta';
 
+// R32: localnet RPC URL is operator-configurable via env. Default falls back to
+// the Solana CLI's standard local validator endpoint so the dashboard works
+// out-of-box for community contributors. Operators that run their own staging
+// localnet point PUBLIC_LOCALNET_RPC_URL at it.
+function readLocalnetRpcUrl(): string {
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    const raw = import.meta.env.PUBLIC_LOCALNET_RPC_URL;
+    if (typeof raw === 'string' && raw.trim().length > 0) return raw.trim();
+  }
+  return 'http://127.0.0.1:8899';
+}
+
 const RPC_ENDPOINTS: Record<Cluster, string> = {
-  'localnet': 'https://rpc.areal.finance',
+  'localnet': readLocalnetRpcUrl(),
   'devnet': 'https://api.devnet.solana.com',
   'mainnet-beta': 'https://api.mainnet-beta.solana.com'
 };

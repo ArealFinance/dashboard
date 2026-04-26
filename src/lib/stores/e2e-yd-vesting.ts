@@ -1,5 +1,5 @@
 /**
- * Vesting numeric correctness E2E (plan/layer-07-review-tester.md §C4).
+ * Vesting numeric correctness E2E (Layer 7 tester review §C4).
  *
  * Today's basic scenario only asserts `received > 0 && received <= netFunded`
  * — which passes for any monotonic-but-broken vesting formula. This scenario

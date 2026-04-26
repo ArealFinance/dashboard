@@ -96,6 +96,19 @@ describe('encodeClaimArgs', () => {
     const bad = new Uint8Array(31);
     expect(() => encodeClaimArgs(0n, [bad])).toThrowError(/length 31/);
   });
+
+  // DASH-2: client-side MAX_PROOF_LEN guard mirrors on-chain `ProofTooLong`.
+  it('rejects proofs longer than MAX_PROOF_LEN (20)', () => {
+    const node = new Uint8Array(32).fill(0x11);
+    const tooMany = Array.from({ length: 21 }, () => node);
+    expect(() => encodeClaimArgs(0n, tooMany)).toThrowError(/Proof too long/);
+  });
+
+  it('accepts proofs at exactly MAX_PROOF_LEN', () => {
+    const node = new Uint8Array(32).fill(0x22);
+    const exactly = Array.from({ length: 20 }, () => node);
+    expect(() => encodeClaimArgs(0n, exactly)).not.toThrow();
+  });
 });
 
 describe('decodeProof', () => {

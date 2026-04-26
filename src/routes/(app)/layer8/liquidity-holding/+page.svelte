@@ -8,6 +8,7 @@
   import { rwtProgramId } from '$lib/stores/rwt';
   import {
     fetchEvents,
+    readRwtVault,
     type LiquidityHoldingFundedEvent,
     type LiquidityHoldingInitializedEvent,
   } from '$lib/api/layer8';
@@ -70,24 +71,17 @@
     if (!walletState.publicKey) throw new Error('Wallet not connected');
     if (!pda) throw new Error('PDA not derived');
 
-    // We need RWT mint to derive the holding ATA. Read it from the RwtVault
-    // account which is the canonical source. (We avoid hardcoding mint addr
-    // — different per cluster.)
+    // L-1: read RWT mint from the RwtVault PDA via the IDL-aware helper
+    // (`readRwtVault`) — avoids re-implementing offset arithmetic and stays
+    // in sync with `contracts/rwt-engine/src/state.rs` if the layout shifts.
     const conn = $connection;
     const [vaultPda] = findRwtVaultPda(rwtProgramId);
-    const info = await conn.getAccountInfo(vaultPda, 'confirmed');
-    if (!info) {
+    const vault = await readRwtVault(conn, vaultPda);
+    if (!vault) {
       throw new Error('RwtVault not initialized; init RWT Engine first.');
     }
-    // RwtVault layout: discriminator (8) + ... + rwt_mint at known offset.
-    // We delegate parsing to the rwt store loader; here we read directly to
-    // avoid pulling the full IDL. Mint is at offset 8 + 16 (after two u64
-    // capital fields = 32 bytes total) — pinned by Layer 3 §state.rs.
-    // For safety, read the canonical 32 bytes at offset 8 + 16 = 24.
-    if (info.data.length < 24 + 32) throw new Error('RwtVault data too short');
-    const rwtMintBytes = info.data.subarray(24, 24 + 32);
     const { PublicKey } = await import('@solana/web3.js');
-    const rwtMint = new PublicKey(rwtMintBytes);
+    const rwtMint = new PublicKey(vault.rwtMint);
     const liquidityHoldingAta = findAta(pda, rwtMint);
 
     const ix = await buildInitializeLiquidityHoldingIx({

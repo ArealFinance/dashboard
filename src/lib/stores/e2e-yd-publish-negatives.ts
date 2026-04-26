@@ -1,7 +1,7 @@
 /**
  * publish_root negatives — all 5 error codes in one scenario.
  *
- * Covers (plan/layer-07-review-tester.md §C2):
+ * Covers (Layer 7 tester review §C2):
  *   1. UnauthorizedPublisher — signed by someone other than publish_authority
  *   2. ZeroMaxClaim          — max_total_claim == 0
  *   3. InvalidMaxClaim       — max_total_claim != distributor.total_funded

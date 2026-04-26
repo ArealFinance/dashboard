@@ -1,5 +1,5 @@
 /**
- * ExceedsMaxClaim cap probe (plan/layer-07-review-tester.md §C3).
+ * ExceedsMaxClaim cap probe (Layer 7 tester review §C3).
  *
  * Goal: assert the contract's `total_claimed + claimable > max_total_claim`
  * guard actually rejects. Reaching this guard from the outside is hard:

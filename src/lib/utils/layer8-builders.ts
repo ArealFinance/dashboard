@@ -172,14 +172,30 @@ export async function buildConvertToRwtIx(
 // -----------------------------------------------------------------------------
 
 /**
+ * On-chain MAX_PROOF_LEN per `contracts/yield-distribution/src/constants.rs`.
+ * Proofs longer than this would revert with `ProofTooLong` on-chain — we
+ * surface the same error client-side so the dashboard never wastes a TX fee.
+ */
+export const MAX_PROOF_LEN = 20;
+
+/**
  * Encode the variable-length args body shared across the 3 claim wrappers
  * (RWT::claim_yield, DEX::compound_yield, OT::claim_yd_for_treasury):
  *   [cumulative_amount(u64 LE) | proof_len(u32 LE) | proof_bytes(32 * N)]
+ *
+ * DASH-2: throws if `proofNodes.length > MAX_PROOF_LEN` (20). The on-chain
+ * handler enforces the same bound — failing client-side surfaces the error
+ * before TX submission and avoids wasted fees / CU.
  */
 export function encodeClaimArgs(
   cumulativeAmount: bigint,
   proofNodes: Uint8Array[],
 ): Uint8Array {
+  if (proofNodes.length > MAX_PROOF_LEN) {
+    throw new Error(
+      `Proof too long: got ${proofNodes.length} nodes, maximum is ${MAX_PROOF_LEN} (on-chain MAX_PROOF_LEN).`,
+    );
+  }
   const out = new Uint8Array(8 + 4 + 32 * proofNodes.length);
   writeU64LE(out, 0, cumulativeAmount);
   writeU32LE(out, 8, proofNodes.length);
