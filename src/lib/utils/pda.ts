@@ -233,6 +233,19 @@ export function findClaimStatusPda(
 }
 
 /**
+ * Derive LiquidityHolding PDA (Layer 8, singleton — per D11.1).
+ * Seeds: ["liq_holding"] — no ot_mint, single global pot.
+ */
+export function findLiquidityHoldingPda(
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('liq_holding')],
+    programId
+  );
+}
+
+/**
  * Derive Associated Token Account address
  */
 export function findAta(owner: PublicKey, mint: PublicKey): PublicKey {

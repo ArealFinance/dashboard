@@ -15,6 +15,21 @@ declare global {
     };
     solflare?: import('$lib/stores/wallet').WalletProvider & { isSolflare: boolean };
   }
+
+  interface ImportMetaEnv {
+    /** Optional revenue-crank heartbeat endpoint (no trailing slash). */
+    readonly PUBLIC_CRANK_REVENUE_URL?: string;
+    /** Optional convert-and-fund-crank heartbeat endpoint. */
+    readonly PUBLIC_CRANK_CONVERT_URL?: string;
+    /** Optional yield-claim-crank heartbeat endpoint. */
+    readonly PUBLIC_CRANK_CLAIM_URL?: string;
+    /** Optional merkle-publisher proof-store base URL. */
+    readonly PUBLIC_PROOF_STORE_URL?: string;
+  }
+
+  interface ImportMeta {
+    readonly env: ImportMetaEnv;
+  }
 }
 
 export {};

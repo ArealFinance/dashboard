@@ -3,7 +3,7 @@
   import { page } from '$app/stores';
   import {
     Hexagon, Coins, Vote, CircleDollarSign, ArrowLeftRight,
-    GitBranch, Bot, LayoutDashboard, ChevronRight,
+    GitBranch, Bot, LayoutDashboard, ChevronRight, Layers,
     Terminal, Upload, PlayCircle
   } from 'lucide-svelte';
   import WalletButton from '$lib/components/WalletButton.svelte';
@@ -26,6 +26,7 @@
     { label: 'RWT Engine', href: '/rwt', icon: CircleDollarSign, enabled: true, description: 'Layer 3' },
     { label: 'Native DEX', href: '/dex', icon: ArrowLeftRight, enabled: true, description: 'Layer 4-5' },
     { label: 'Yield Distribution', href: '/yd', icon: GitBranch, enabled: true, description: 'Layer 7' },
+    { label: 'Layer 8 — Yield Flows', href: '/layer8', icon: Layers, enabled: true, description: 'Cranks + claims' },
     { label: 'Bots', href: '/bots', icon: Bot, enabled: false, description: 'Layer 8-9' },
   ];
 
