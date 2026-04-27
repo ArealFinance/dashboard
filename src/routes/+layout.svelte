@@ -27,7 +27,8 @@
     { label: 'Native DEX', href: '/dex', icon: ArrowLeftRight, enabled: true, description: 'Layer 4-5' },
     { label: 'Yield Distribution', href: '/yd', icon: GitBranch, enabled: true, description: 'Layer 7' },
     { label: 'Layer 8 — Yield Flows', href: '/layer8', icon: Layers, enabled: true, description: 'Cranks + claims' },
-    { label: 'Bots', href: '/bots', icon: Bot, enabled: false, description: 'Layer 8-9' },
+    { label: 'Liquidity Nexus', href: '/nexus', icon: ArrowLeftRight, enabled: true, description: 'Layer 9' },
+    { label: 'Bots', href: '/bots', icon: Bot, enabled: true, description: 'Heartbeats' },
   ];
 
   const devNavItems: NavItem[] = [

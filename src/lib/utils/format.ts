@@ -59,17 +59,19 @@ export function base58ToBytes(address: string): Uint8Array {
 export function parseDecimal(value: string, decimals: number): bigint {
   const trimmed = value.trim();
   if (!trimmed) return 0n;
-  // Accept optional leading sign
-  const match = trimmed.match(/^(-?)(\d*)(?:\.(\d*))?$/);
+  // Token amounts are unsigned by definition. A leading `-` is rejected so
+  // callers cannot inadvertently encode a negative bigint into a u64/u128
+  // ix arg (which would either throw at writeU64LE/writeU128LE time or, in
+  // worst case, wrap to a huge magnitude).
+  const match = trimmed.match(/^(\d*)(?:\.(\d*))?$/);
   if (!match) return 0n;
-  const [, sign, intPart, fracPartRaw = ''] = match;
+  const [, intPart, fracPartRaw = ''] = match;
   // Truncate fractional part to `decimals` digits; pad with zeros if shorter
   const fracPart = fracPartRaw.slice(0, decimals).padEnd(decimals, '0');
   const combined = (intPart || '0') + fracPart;
   // Strip leading zeros except single zero
   const normalized = combined.replace(/^0+(?=\d)/, '') || '0';
-  const magnitude = BigInt(normalized);
-  return sign === '-' ? -magnitude : magnitude;
+  return BigInt(normalized);
 }
 
 /**
