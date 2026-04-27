@@ -60,6 +60,52 @@ server {
 }
 ```
 
+## Release checklist (Layer 9)
+
+Before tagging a Layer 9 dashboard release, confirm the following env-driven
+constants are populated for the target deployment:
+
+| Variable | Purpose | Required by |
+|---|---|---|
+| `PUBLIC_USDC_MINT` | USDC mint addr for Nexus deposit / withdraw flows + convert path | `/nexus/`, `/layer8/convert/` |
+| `PUBLIC_RWT_USDC_POOL` | Master RWT/USDC pool PDA — drives the convert-to-rwt route resolver | `/layer8/convert/` |
+| `PUBLIC_NEXUS_MANAGER_BOT_URL` | Heartbeat endpoint for the nexus-manager bot panel (4th panel on `/bots/`) | `/bots/` |
+
+The static build inlines these at compile time; changing them requires a
+rebuild + redeploy.
+
+### IDL regeneration (R57 — Layer 10 critical path)
+
+`src/lib/idl/native-dex.json` currently lacks the 9 Layer 9 Nexus
+instructions (`initialize_nexus`, `update_nexus_manager`, `nexus_swap`,
+`nexus_add_liquidity`, `nexus_remove_liquidity`, `nexus_deposit`,
+`nexus_record_deposit`, `nexus_withdraw_profits`, `nexus_claim_rewards`)
+plus `claim_lp_fees`. The bootstrap reads this IDL via arlex-client; until
+it is regenerated, the bootstrap's `phaseNexus` records the missing ix in
+`init_skipped[]` and Substep 13 E2E for Nexus paths is gated.
+
+Regen procedure:
+
+```bash
+# In the contracts/ submodule:
+cd contracts
+cargo build-sbf
+
+# Use the Arlex IDL extractor (or anchor idl parse equivalent) to dump the
+# updated native-dex IDL JSON and replace the dashboard copy:
+arlex idl extract \
+  --program native-dex \
+  --output ../dashboard/src/lib/idl/native-dex.json
+```
+
+After regen:
+
+1. `npm run build` in `dashboard/`.
+2. Re-run `scripts/e2e-bootstrap.sh` and verify `init_skipped[]` no longer
+   contains `DEX::initialize_nexus`.
+3. Remove the `ixExists` precondition skip in `scripts/lib/bootstrap-init.ts`
+   `phaseNexus` (R57 closure step 3).
+
 ## Dependencies
 
 - IDL files are checked into `src/lib/idl/*.json` (copied from [ArealFinance/contracts](https://github.com/ArealFinance/contracts)).
