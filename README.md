@@ -74,6 +74,16 @@ constants are populated for the target deployment:
 The static build inlines these at compile time; changing them requires a
 rebuild + redeploy.
 
+> **Mainnet policy** (Substep 15 sec L-1 + SD-20): operator MUST override
+> `PUBLIC_USDC_MINT` for mainnet deployments. Do **not** ship a build
+> where this var resolves to the SD-20 devnet test-mint fallback —
+> dashboard would silently route convert/deposit flows to a worthless
+> mint. Same applies to `PUBLIC_RWT_USDC_POOL`: a canonical-PDA
+> auto-derive is OK for devnet (per SD-21) but mainnet must pin the
+> deployed master-pool address explicitly. CI release pipelines should
+> assert `process.env.NETWORK !== 'mainnet' || PUBLIC_USDC_MINT !== <devnet>`
+> before publishing.
+
 ### IDL regeneration (R57 — Layer 10 critical path)
 
 `src/lib/idl/native-dex.json` currently lacks the 9 Layer 9 Nexus
