@@ -244,11 +244,7 @@
         distributorPda = accounts.ydDistributor;
         claimantPda = accounts.rwtVault;
       } else if (selectedClaim.kind === 'pool') {
-        // Need pool data + RWT mint.
-        const [vaultPda] = findRwtVaultPda(rwtProgramId);
-        const vault = await readRwtVault(conn, vaultPda);
-        if (!vault) throw new Error('RwtVault not initialized');
-        const rwtMint = new PublicKey(vault.rwtMint);
+        // Substep 11 LOW-2 — resolver self-reads RwtVault, no need to pre-fetch.
         const poolData = $dexStore.pools.find((p) => p.pda === (selectedClaim as { kind: 'pool'; pool: string; otMint: string }).pool);
         if (!poolData) {
           throw new Error(
@@ -261,7 +257,6 @@
           programs,
           otMintPk,
           poolData,
-          rwtMint,
         );
         vestingProgress = accounts.vesting;
         distributorEpoch = accounts.distributorEpoch;
@@ -269,10 +264,6 @@
         distributorPda = accounts.ydDistributor;
         claimantPda = accounts.poolState;
       } else {
-        const [vaultPda] = findRwtVaultPda(rwtProgramId);
-        const vault = await readRwtVault(conn, vaultPda);
-        if (!vault) throw new Error('RwtVault not initialized');
-        const rwtMint = new PublicKey(vault.rwtMint);
         const otMintPk = new PublicKey(selectedClaim.otMint);
         const ydOtMintPk = new PublicKey(selectedClaim.ydOtMint);
         const accounts = await resolveTreasuryClaimAccounts(
@@ -280,7 +271,6 @@
           programs,
           otMintPk,
           ydOtMintPk,
-          rwtMint,
         );
         vestingProgress = accounts.vesting;
         distributorEpoch = accounts.distributorEpoch;
@@ -375,10 +365,6 @@
     }
 
     if (selectedClaim.kind === 'pool') {
-      const [vaultPda] = findRwtVaultPda(rwtProgramId);
-      const vault = await readRwtVault(conn, vaultPda);
-      if (!vault) throw new Error('RwtVault not initialized');
-      const rwtMint = new PublicKey(vault.rwtMint);
       const poolData = $dexStore.pools.find(
         (p) => p.pda === (selectedClaim as { kind: 'pool'; pool: string }).pool,
       );
@@ -389,7 +375,6 @@
         programs,
         otMintPk,
         poolData,
-        rwtMint,
       );
       const ix = await buildDexCompoundIx({
         dexProgramId,
@@ -408,11 +393,7 @@
       return [...buildComputeBudgetIxs(CU_BUDGETS.claim, 1000), ix];
     }
 
-    // treasury
-    const [vaultPda] = findRwtVaultPda(rwtProgramId);
-    const vault = await readRwtVault(conn, vaultPda);
-    if (!vault) throw new Error('RwtVault not initialized');
-    const rwtMint = new PublicKey(vault.rwtMint);
+    // treasury — Substep 11 LOW-2: resolver self-reads RwtVault.
     const otMintPk = new PublicKey(selectedClaim.otMint);
     const ydOtMintPk = new PublicKey(selectedClaim.ydOtMint);
     const accounts = await resolveTreasuryClaimAccounts(
@@ -420,7 +401,6 @@
       programs,
       otMintPk,
       ydOtMintPk,
-      rwtMint,
     );
     const ix = await buildOtTreasuryClaimIx({
       otProgramId,

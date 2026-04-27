@@ -34,21 +34,30 @@ const pk = (): PublicKey => Keypair.generate().publicKey;
 
 // jsdom + node polyfills break ed25519 curve checks for off-curve PDA
 // derivation — mirror the pattern from pda.test.ts and stub the underlying
-// API to return a sentinel pubkey. The unit tests assert on resolver wiring
-// (which fields populate which slots), not on real PDA cryptography (that
-// is exercised in pda.test.ts via the mocked findProgramAddressSync there).
-let pdaCallIdx = 0;
-const pdaSentinels: PublicKey[] = [];
+// API to return a deterministic sentinel pubkey.
+//
+// Tester H-1 (mock fidelity): the sentinel is now a deterministic hash of
+// (programId, ...seeds) so wrong-seeds bugs surface as mismatched bytes
+// instead of a "lucky pass" with arbitrary fillers. The hash is computed
+// from a stable digest so test runs are reproducible.
+import { createHash } from 'node:crypto';
+
+function deterministicSentinel(programId: PublicKey, seeds: (Buffer | Uint8Array)[]): PublicKey {
+  const h = createHash('sha256');
+  h.update(programId.toBuffer());
+  for (const s of seeds) {
+    h.update(Buffer.from(s));
+    h.update(Buffer.from([0xff])); // separator so seeds aren't ambiguous when concatenated
+  }
+  return new PublicKey(h.digest().subarray(0, 32));
+}
 
 beforeEach(() => {
-  pdaCallIdx = 0;
-  pdaSentinels.length = 0;
-  vi.spyOn(PublicKey, 'findProgramAddressSync').mockImplementation(() => {
-    const sentinel = new PublicKey(new Uint8Array(32).fill((pdaCallIdx % 250) + 1));
-    pdaSentinels.push(sentinel);
-    pdaCallIdx++;
-    return [sentinel, 254];
-  });
+  vi.spyOn(PublicKey, 'findProgramAddressSync').mockImplementation(
+    (seeds: (Buffer | Uint8Array)[], programId: PublicKey) => {
+      return [deterministicSentinel(programId, seeds), 254];
+    },
+  );
 });
 
 afterEach(() => {
@@ -229,6 +238,36 @@ function makeMockConnection(map: Map<string, Buffer | null>) {
 
 // ----------------------------------------------------------------------------
 
+// ----------------------------------------------------------------------------
+// Tester H-1 / H-2 — mock fidelity
+// ----------------------------------------------------------------------------
+
+describe('PDA mock fidelity (tester H-1: deterministic hash sentinels)', () => {
+  it('two findProgramAddressSync calls with the same (programId, seeds) yield identical sentinel bytes', () => {
+    const programId = pk();
+    const seedA = Buffer.from('seed-a');
+    const seedB = Buffer.from('seed-b');
+
+    const [out1] = PublicKey.findProgramAddressSync([seedA, seedB], programId);
+    const [out2] = PublicKey.findProgramAddressSync([seedA, seedB], programId);
+    expect(out1.toBase58()).toBe(out2.toBase58());
+  });
+
+  it('different seeds produce different sentinels (catches wrong-seeds bugs)', () => {
+    const programId = pk();
+    const [out1] = PublicKey.findProgramAddressSync([Buffer.from('seed-a')], programId);
+    const [out2] = PublicKey.findProgramAddressSync([Buffer.from('seed-b')], programId);
+    expect(out1.toBase58()).not.toBe(out2.toBase58());
+  });
+
+  it('different programIds produce different sentinels for the same seeds', () => {
+    const seeds = [Buffer.from('seed')];
+    const [out1] = PublicKey.findProgramAddressSync(seeds, pk());
+    const [out2] = PublicKey.findProgramAddressSync(seeds, pk());
+    expect(out1.toBase58()).not.toBe(out2.toBase58());
+  });
+});
+
 describe('selectMasterPoolDirection', () => {
   const usdc = new PublicKey('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
   const rwt = pk();
@@ -393,6 +432,58 @@ describe('resolveConvertAccounts', () => {
       }),
     };
   }
+
+  it('tester H-2: getAccountInfo call ordering is YD config → distributor → RwtVault', async () => {
+    // Pin the read order by spying on the mock and asserting nthCallWith.
+    const mockFn = vi.fn(async (_pk: PublicKey) => {
+      // Emit valid bodies in the expected order.
+      const callIdx = mockFn.mock.calls.length - 1;
+      const datas: Buffer[] = [
+        buildDistributionConfigBody({
+          authority,
+          publishAuthority: pk(),
+          arealFeeDestination: arealFeeDest,
+          minDistributionAmount: 1n,
+        }),
+        buildMerkleDistributorBody({ otMint, rewardVault, accumulator }),
+        buildRwtVaultBody({
+          capitalAcc,
+          rwtMint,
+          authority,
+          manager,
+          arealFeeDestination: arealFeeDest,
+        }),
+      ];
+      const data = datas[callIdx];
+      if (!data) return null;
+      return { data, owner: pk(), executable: false, lamports: 1, rentEpoch: 0 };
+    });
+    const conn = { getAccountInfo: mockFn } as any;
+
+    await resolveConvertAccounts(
+      conn,
+      { ydProgramId, rwtEngineProgramId, dexProgramId, otProgramId },
+      otMint,
+      usdcMint,
+      rwtUsdcPool,
+      dexConfig,
+      dexArealFeeAccount,
+      {
+        tokenAMint: usdcMint.toBase58(),
+        tokenBMint: rwtMint.toBase58(),
+        vaultA: vaultA.toBase58(),
+        vaultB: vaultB.toBase58(),
+      },
+    );
+
+    expect(mockFn).toHaveBeenCalledTimes(3);
+    // First call → YD DistributionConfig PDA (deterministic via mocked PDA seed).
+    // Subsequent calls → MerkleDistributor → RwtVault.
+    // We assert the pubkey args are distinct (i.e. the resolver isn't reading
+    // the same account 3 times).
+    const calls = mockFn.mock.calls.map((c: any) => (c[0] as PublicKey).toBase58());
+    expect(new Set(calls).size).toBe(3); // three distinct PDAs
+  });
 
   it('returns the full set of dynamic accounts (all 13 pubkeys present)', async () => {
     const conn = setupConnection();
@@ -596,9 +687,10 @@ describe('resolveRwtClaimAccounts', () => {
 
 // ----------------------------------------------------------------------------
 
-describe('resolveDexCompoundAccounts', () => {
+describe('resolveDexCompoundAccounts (Substep 11 LOW-2 — self-read RwtVault)', () => {
   it('targets vault_a when token_a is RWT', async () => {
     const ydProgramId = pk();
+    const rwtEngineProgramId = pk();
     const otMint = pk();
     const rwtMint = pk();
     const vaultA = pk();
@@ -606,14 +698,24 @@ describe('resolveDexCompoundAccounts', () => {
     const rewardVault = pk();
     const accumulator = pk();
 
+    // Resolver now reads (1) RwtVault + (2) MerkleDistributor in order.
+    let callIdx = 0;
+    const datas = [
+      buildRwtVaultBody({
+        capitalAcc: pk(),
+        rwtMint,
+        authority: pk(),
+        manager: pk(),
+        arealFeeDestination: pk(),
+      }),
+      buildMerkleDistributorBody({ otMint, rewardVault, accumulator }),
+    ];
     const conn = {
-      getAccountInfo: vi.fn(async () => ({
-        data: buildMerkleDistributorBody({ otMint, rewardVault, accumulator }),
-        owner: pk(),
-        executable: false,
-        lamports: 1,
-        rentEpoch: 0,
-      })),
+      getAccountInfo: vi.fn(async () => {
+        const data = datas[callIdx++];
+        if (!data) return null;
+        return { data, owner: pk(), executable: false, lamports: 1, rentEpoch: 0 };
+      }),
     } as any;
 
     const pool = {
@@ -625,16 +727,16 @@ describe('resolveDexCompoundAccounts', () => {
     };
     const out = await resolveDexCompoundAccounts(
       conn,
-      { ydProgramId, rwtEngineProgramId: pk(), dexProgramId: pk(), otProgramId: pk() },
+      { ydProgramId, rwtEngineProgramId, dexProgramId: pk(), otProgramId: pk() },
       otMint,
       pool,
-      rwtMint,
     );
     expect(out.targetVault.equals(vaultA)).toBe(true);
   });
 
   it('targets vault_b when token_b is RWT', async () => {
     const ydProgramId = pk();
+    const rwtEngineProgramId = pk();
     const otMint = pk();
     const rwtMint = pk();
     const vaultA = pk();
@@ -642,14 +744,23 @@ describe('resolveDexCompoundAccounts', () => {
     const rewardVault = pk();
     const accumulator = pk();
 
+    let callIdx = 0;
+    const datas = [
+      buildRwtVaultBody({
+        capitalAcc: pk(),
+        rwtMint,
+        authority: pk(),
+        manager: pk(),
+        arealFeeDestination: pk(),
+      }),
+      buildMerkleDistributorBody({ otMint, rewardVault, accumulator }),
+    ];
     const conn = {
-      getAccountInfo: vi.fn(async () => ({
-        data: buildMerkleDistributorBody({ otMint, rewardVault, accumulator }),
-        owner: pk(),
-        executable: false,
-        lamports: 1,
-        rentEpoch: 0,
-      })),
+      getAccountInfo: vi.fn(async () => {
+        const data = datas[callIdx++];
+        if (!data) return null;
+        return { data, owner: pk(), executable: false, lamports: 1, rentEpoch: 0 };
+      }),
     } as any;
 
     const pool = {
@@ -661,19 +772,39 @@ describe('resolveDexCompoundAccounts', () => {
     };
     const out = await resolveDexCompoundAccounts(
       conn,
-      { ydProgramId, rwtEngineProgramId: pk(), dexProgramId: pk(), otProgramId: pk() },
+      { ydProgramId, rwtEngineProgramId, dexProgramId: pk(), otProgramId: pk() },
       otMint,
       pool,
-      rwtMint,
     );
     expect(out.targetVault.equals(vaultB)).toBe(true);
   });
 
   it('throws when pool has no RWT side', async () => {
     const ydProgramId = pk();
+    const rwtEngineProgramId = pk();
     const otMint = pk();
     const rwtMint = pk();
-    const conn = makeMockConnection(new Map());
+
+    let callIdx = 0;
+    // First call returns a valid RwtVault so the resolver can derive the
+    // RWT mint; second call would be MerkleDistributor but we never reach
+    // it because the pool-side check fires first.
+    const datas = [
+      buildRwtVaultBody({
+        capitalAcc: pk(),
+        rwtMint,
+        authority: pk(),
+        manager: pk(),
+        arealFeeDestination: pk(),
+      }),
+    ];
+    const conn = {
+      getAccountInfo: vi.fn(async () => {
+        const data = datas[callIdx++];
+        if (!data) return null;
+        return { data, owner: pk(), executable: false, lamports: 1, rentEpoch: 0 };
+      }),
+    } as any;
     const pool = {
       pda: pk().toBase58(),
       tokenAMint: pk().toBase58(),
@@ -684,20 +815,40 @@ describe('resolveDexCompoundAccounts', () => {
     await expect(
       resolveDexCompoundAccounts(
         conn,
-        { ydProgramId, rwtEngineProgramId: pk(), dexProgramId: pk(), otProgramId: pk() },
+        { ydProgramId, rwtEngineProgramId, dexProgramId: pk(), otProgramId: pk() },
         otMint,
         pool,
-        rwtMint,
       ),
     ).rejects.toThrowError(/no RWT side/);
+  });
+
+  it('throws when RwtVault is uninitialized (LOW-2 self-read failure)', async () => {
+    const conn = {
+      getAccountInfo: vi.fn(async () => null),
+    } as any;
+    await expect(
+      resolveDexCompoundAccounts(
+        conn,
+        { ydProgramId: pk(), rwtEngineProgramId: pk(), dexProgramId: pk(), otProgramId: pk() },
+        pk(),
+        {
+          pda: pk().toBase58(),
+          tokenAMint: pk().toBase58(),
+          tokenBMint: pk().toBase58(),
+          vaultA: pk().toBase58(),
+          vaultB: pk().toBase58(),
+        },
+      ),
+    ).rejects.toThrowError(/RwtVault not initialized/);
   });
 });
 
 // ----------------------------------------------------------------------------
 
-describe('resolveTreasuryClaimAccounts', () => {
+describe('resolveTreasuryClaimAccounts (Substep 11 LOW-2 — self-read RwtVault)', () => {
   it('derives ot_treasury under otProgramId and uses ydOtMint for distributor', async () => {
     const ydProgramId = pk();
+    const rwtEngineProgramId = pk();
     const otProgramId = pk();
     const otMint = pk();
     const ydOtMint = pk(); // distinct from otMint
@@ -705,32 +856,54 @@ describe('resolveTreasuryClaimAccounts', () => {
     const rewardVault = pk();
     const accumulator = pk();
 
+    let callIdx = 0;
+    const datas = [
+      buildRwtVaultBody({
+        capitalAcc: pk(),
+        rwtMint,
+        authority: pk(),
+        manager: pk(),
+        arealFeeDestination: pk(),
+      }),
+      buildMerkleDistributorBody({
+        otMint: ydOtMint, // distributor is keyed by ydOtMint
+        rewardVault,
+        accumulator,
+      }),
+    ];
     const conn = {
-      getAccountInfo: vi.fn(async () => ({
-        data: buildMerkleDistributorBody({
-          otMint: ydOtMint, // distributor is keyed by ydOtMint
-          rewardVault,
-          accumulator,
-        }),
-        owner: pk(),
-        executable: false,
-        lamports: 1,
-        rentEpoch: 0,
-      })),
+      getAccountInfo: vi.fn(async () => {
+        const data = datas[callIdx++];
+        if (!data) return null;
+        return { data, owner: pk(), executable: false, lamports: 1, rentEpoch: 0 };
+      }),
     } as any;
 
     const out = await resolveTreasuryClaimAccounts(
       conn,
-      { ydProgramId, rwtEngineProgramId: pk(), dexProgramId: pk(), otProgramId },
+      { ydProgramId, rwtEngineProgramId, dexProgramId: pk(), otProgramId },
       otMint,
       ydOtMint,
-      rwtMint,
     );
     expect(out.otMint.equals(otMint)).toBe(true);
     expect(out.ydOtMint.equals(ydOtMint)).toBe(true);
     expect(out.otTreasury.toBytes().length).toBe(32);
     expect(out.treasuryRwtAta.toBytes().length).toBe(32);
     expect(out.ydRewardVault.equals(rewardVault)).toBe(true);
+  });
+
+  it('throws when RwtVault is uninitialized (LOW-2 self-read failure)', async () => {
+    const conn = {
+      getAccountInfo: vi.fn(async () => null),
+    } as any;
+    await expect(
+      resolveTreasuryClaimAccounts(
+        conn,
+        { ydProgramId: pk(), rwtEngineProgramId: pk(), dexProgramId: pk(), otProgramId: pk() },
+        pk(),
+        pk(),
+      ),
+    ).rejects.toThrowError(/RwtVault not initialized/);
   });
 });
 

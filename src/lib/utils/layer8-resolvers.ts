@@ -320,6 +320,8 @@ export interface DexCompoundAccountSet {
     totalFunded: bigint;
     totalClaimed: bigint;
   };
+  /** Distributor's current merkle-root epoch — sec M-2 staleness gate. */
+  distributorEpoch: bigint;
 }
 
 /**
@@ -328,15 +330,28 @@ export interface DexCompoundAccountSet {
  * Auto-detects the RWT side of the pool: target_vault = vault_a if token_a is
  * RWT, else vault_b. Throws if neither side is RWT (caller forwarded a
  * non-RWT pool to the wrapper).
+ *
+ * Substep 11 LOW-2: the resolver now self-reads RwtVault to derive the RWT
+ * mint internally. Previous signature required callers to pre-fetch + pass
+ * `rwtMint`, which duplicated the read at every call site (and made it easy
+ * to pass a stale mint if the vault rotated). Self-read keeps the resolver
+ * the single owner of "what is RWT for this cluster?".
  */
 export async function resolveDexCompoundAccounts(
   connection: Connection,
   programs: Layer8Programs,
   otMint: PublicKey,
   pool: { pda: string; tokenAMint: string; tokenBMint: string; vaultA: string; vaultB: string },
-  rwtMint: PublicKey,
 ): Promise<DexCompoundAccountSet> {
-  const { ydProgramId } = programs;
+  const { ydProgramId, rwtEngineProgramId } = programs;
+
+  // LOW-2: self-read RwtVault to derive RWT mint.
+  const [rwtVaultPda] = findRwtVaultPda(rwtEngineProgramId);
+  const rwtVault = await readRwtVault(connection, rwtVaultPda);
+  if (!rwtVault) {
+    throw new Error('RwtVault not initialized — RWT mint required to pick pool side');
+  }
+  const rwtMint = new PublicKey(rwtVault.rwtMint);
 
   const rwt = rwtMint.toBase58();
   let targetVault: PublicKey;
@@ -399,6 +414,8 @@ export interface OtTreasuryClaimAccountSet {
     totalFunded: bigint;
     totalClaimed: bigint;
   };
+  /** Distributor's current merkle-root epoch — sec M-2 staleness gate. */
+  distributorEpoch: bigint;
 }
 
 /**
@@ -407,15 +424,25 @@ export interface OtTreasuryClaimAccountSet {
  * The OT pulls yield from a YD distributor identified by `ydOtMint`
  * (typically the SAME OT mint, but distinct fields keep the dual-key
  * possibility open for future wrapper distributors).
+ *
+ * Substep 11 LOW-2: self-reads RwtVault internally — see
+ * resolveDexCompoundAccounts for rationale.
  */
 export async function resolveTreasuryClaimAccounts(
   connection: Connection,
   programs: Layer8Programs,
   otMint: PublicKey,
   ydOtMint: PublicKey,
-  rwtMint: PublicKey,
 ): Promise<OtTreasuryClaimAccountSet> {
-  const { ydProgramId, otProgramId } = programs;
+  const { ydProgramId, rwtEngineProgramId, otProgramId } = programs;
+
+  // LOW-2: self-read RwtVault to derive RWT mint.
+  const [rwtVaultPda] = findRwtVaultPda(rwtEngineProgramId);
+  const rwtVault = await readRwtVault(connection, rwtVaultPda);
+  if (!rwtVault) {
+    throw new Error('RwtVault not initialized — RWT mint required for treasury ATA');
+  }
+  const rwtMint = new PublicKey(rwtVault.rwtMint);
 
   const [otTreasuryPda] = findOtTreasuryPda(otMint, otProgramId);
   const treasuryRwtAta = findAta(otTreasuryPda, rwtMint);
