@@ -539,8 +539,31 @@ export interface RwtVaultState {
   rwtMint: string;
   authority: string;
   manager: string;
+  /**
+   * Areal DAO fee destination. Doubles as the `dao_fee_account` slot referenced
+   * by `convert_to_rwt` and `mint_rwt` — the contract has a single field with
+   * two semantic names (`vault.areal_fee_destination` is the storage; the
+   * `mint_rwt` instruction context names the corresponding account
+   * `dao_fee_account` and validates `addr == vault.areal_fee_destination`).
+   *
+   * SD-22 plan called for adding a separate `daoFeeAccount` field; the
+   * contract source of truth (rwt-engine/src/state.rs:25) ships them as one
+   * field. Surfacing both names would diverge from the on-chain layout — we
+   * keep the single field and document the dual role here.
+   *
+   * Pinned to byte 226 of the RwtVault account body (offset 226..258 = 32B).
+   */
   arealFeeDestination: string;
   bump: number;
+}
+
+/**
+ * Alias accessor for the `dao_fee_account` semantic name used by
+ * `convert_to_rwt` callers. SD-22: the underlying field is
+ * `arealFeeDestination` per contract layout — see RwtVaultState JSDoc.
+ */
+export function getRwtDaoFeeAccount(vault: RwtVaultState): string {
+  return vault.arealFeeDestination;
 }
 
 /**

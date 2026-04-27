@@ -246,6 +246,22 @@ export function findLiquidityHoldingPda(
 }
 
 /**
+ * Derive LiquidityNexus PDA (Layer 9, singleton — DEX-program-owned per D17).
+ * Seeds: ["liquidity_nexus"] — single global Nexus counter.
+ *
+ * Used by `withdraw_liquidity_holding` (R20) as the drain destination's
+ * counter PDA. Pinned to `contracts/native-dex/src/constants.rs::LIQUIDITY_NEXUS_SEED`.
+ */
+export function findLiquidityNexusPda(
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('liquidity_nexus')],
+    programId
+  );
+}
+
+/**
  * Derive Associated Token Account address
  */
 export function findAta(owner: PublicKey, mint: PublicKey): PublicKey {

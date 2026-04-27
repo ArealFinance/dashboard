@@ -7,12 +7,24 @@
     ydProgramId,
     getAccumulatorPda,
   } from '$lib/stores/yd';
+  import { rwtProgramId } from '$lib/stores/rwt';
+  import { dexStore, dexProgramId } from '$lib/stores/dex';
+  import { programId as otProgramId } from '$lib/stores/ot';
   import { connection } from '$lib/stores/network';
   import { wallet } from '$lib/stores/wallet';
   import { fetchStreamConvertedEvents, type StreamConvertedEvent } from '$lib/api/layer8';
   import { findAta, USDC_MINTS } from '$lib/utils/pda';
   import { network } from '$lib/stores/network';
   import { formatAmount, formatAddress, parseDecimal } from '$lib/utils/format';
+  import {
+    buildConvertToRwtIx,
+    buildComputeBudgetIxs,
+    CU_BUDGETS,
+  } from '$lib/utils/layer8-builders';
+  import {
+    resolveConvertAccounts,
+    resolveRwtUsdcMasterPool,
+  } from '$lib/utils/layer8-resolvers';
   import ConvertMetadataCard from '$lib/components/layer8/ConvertMetadataCard.svelte';
   import ManualTriggerModal from '$lib/components/layer8/ManualTriggerModal.svelte';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
@@ -91,6 +103,8 @@
 
   onMount(() => {
     void refresh();
+    // Ensure DEX config + master pool are loaded for the convert resolver.
+    void dexStore.refresh();
   });
 
   function openModal(row: AccumRow): void {
@@ -110,6 +124,13 @@
         `USDC amount (${formatAmount(usdc, USDC_DECIMALS)}) exceeds accumulator balance (${formatAmount(selectedRow.usdcBalance, USDC_DECIMALS)})`,
       );
     }
+    // D1: outer slippage protection. Inner CPIs use min=1; outer must be > 0
+    // so the contract's `rwt_acquired < min_rwt_out` revert path catches a
+    // bad swap.
+    const minRwt = parseDecimal(minRwtOutInput, RWT_DECIMALS);
+    if (minRwt <= 0n) {
+      throw new Error('Min RWT out must be > 0 (slippage protection — D1).');
+    }
   }
 
   async function buildModalIx(): Promise<TransactionInstruction[]> {
@@ -117,16 +138,126 @@
     if (!walletState.publicKey) throw new Error('Wallet not connected');
     if (!usdcMint) throw new Error('No USDC mint for current cluster');
 
-    // We need many auxiliary addresses for convert_to_rwt. The dashboard
-    // doesn't yet load every dependent PDA (DEX pool, RWT vault auxiliaries),
-    // so this prompts the user to provide them via the form. For now, we
-    // surface a clear "missing addresses" error if the YD config doesn't
-    // include the necessary defaults — ensuring the modal never builds an
-    // ix with placeholder pubkeys (which would cost CU and revert).
-    throw new Error(
-      'Manual convert TX builder requires DEX pool / RWT vault aux pubkeys not yet in YD config. ' +
-        'Trigger the convert-and-fund crank instead, or use the dev tools to populate cluster aux addresses.',
+    const conn = $connection;
+    const dex = $dexStore;
+    if (!dex.config || !dex.configPda) {
+      throw new Error('DEX state not loaded — refresh DEX first.');
+    }
+
+    // Resolve the master RWT/USDC pool. SD-21: env-override or canonical-derive.
+    // We need the RWT mint first to derive the canonical seed pair — the
+    // resolveConvertAccounts call also reads RwtVault, so we'd double-fetch
+    // if we read it here too. Pull RWT mint from the resolved RwtVault state
+    // by doing a single bottleneck read.
+    const env = (typeof import.meta !== 'undefined' && import.meta.env)
+      ? import.meta.env
+      : ({} as ImportMetaEnv);
+    const envOverride = (env as any).PUBLIC_RWT_USDC_POOL as string | undefined;
+
+    // Read RwtVault once so we know the RWT mint for the master pool derivation.
+    // (resolveConvertAccounts will read it again; the small redundancy is
+    // worth keeping the resolver pure / single-purpose.)
+    const { readRwtVault } = await import('$lib/api/layer8');
+    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const [rwtVaultPda] = findRwtVaultPda(rwtProgramId);
+    const rwtVault = await readRwtVault(conn, rwtVaultPda);
+    if (!rwtVault) {
+      throw new Error('RwtVault not initialized — run RWT Engine setup first.');
+    }
+    const rwtMint = new PublicKey(rwtVault.rwtMint);
+
+    const masterPoolPda = resolveRwtUsdcMasterPool(
+      envOverride,
+      rwtMint,
+      usdcMint,
+      dexProgramId,
+      $network,
     );
+
+    // Refresh the master pool state into dex store so we can read vault
+    // assignments for the swap direction.
+    let pool = dex.pools.find((p) => p.pda === masterPoolPda.toBase58());
+    if (!pool) {
+      // Try to load it via the canonical-order helper.
+      const a = rwtMint.toBuffer();
+      const b = usdcMint.toBuffer();
+      const cmp = Buffer.compare(a, b);
+      const [tokenA, tokenB] = cmp <= 0 ? [rwtMint, usdcMint] : [usdcMint, rwtMint];
+      pool = await dexStore.refreshPool(tokenA, tokenB) ?? undefined;
+    }
+    if (!pool) {
+      throw new Error(
+        `Master RWT/USDC pool not found at ${masterPoolPda.toBase58()}. ` +
+          'Ensure the pool has been created on the active cluster, or set PUBLIC_RWT_USDC_POOL.',
+      );
+    }
+
+    // Resolver pulls the rest.
+    const otMintPk = new PublicKey(selectedRow.otMint);
+    const accounts = await resolveConvertAccounts(
+      conn,
+      {
+        ydProgramId,
+        rwtEngineProgramId: rwtProgramId,
+        dexProgramId,
+        otProgramId,
+      },
+      otMintPk,
+      usdcMint,
+      masterPoolPda,
+      dex.configPda,
+      new PublicKey(dex.config.arealFeeDestination),
+      pool,
+    );
+
+    const usdcAmount = parseDecimal(usdcAmountInput, USDC_DECIMALS);
+    const minRwtOut = parseDecimal(minRwtOutInput, RWT_DECIMALS);
+
+    // Architecture min-distribution gate (D1 spec hint): warn when the
+    // requested USDC amount is below the configured floor — the on-chain
+    // handler does NOT enforce a per-call min on convert_to_rwt itself,
+    // but ops convention treats `DistributionConfig.minDistributionAmount`
+    // as a "don't run if below this" signal for the crank.
+    if (usdcAmount < accounts.minDistributionAmount) {
+      throw new Error(
+        `USDC amount (${formatAmount(usdcAmount, USDC_DECIMALS)}) is below ` +
+          `DistributionConfig.minDistributionAmount ` +
+          `(${formatAmount(accounts.minDistributionAmount, USDC_DECIMALS)}). ` +
+          'Wait for the accumulator to fill before converting.',
+      );
+    }
+
+    const ix = await buildConvertToRwtIx({
+      ydProgramId,
+      dexProgramId,
+      rwtEngineProgramId: rwtProgramId,
+      signer: walletState.publicKey,
+
+      config: accounts.config,
+      distributor: accounts.distributor,
+      otMint: accounts.otMint,
+      accumulator: accounts.accumulator,
+      accumulatorUsdcAta: accounts.accumulatorUsdcAta,
+      accumulatorRwtAta: accounts.accumulatorRwtAta,
+      feeAccount: accounts.feeAccount,
+      rewardVault: accounts.rewardVault,
+      rwtMint: accounts.rwtMint,
+      dexConfig: accounts.dexConfig,
+      poolState: accounts.poolState,
+      dexPoolVaultIn: accounts.dexPoolVaultIn,
+      dexPoolVaultOut: accounts.dexPoolVaultOut,
+      dexArealFeeAccount: accounts.dexArealFeeAccount,
+      rwtVault: accounts.rwtVault,
+      rwtCapitalAcc: accounts.rwtCapitalAcc,
+      rwtDaoFeeAccount: accounts.rwtDaoFeeAccount,
+
+      usdcAmount,
+      minRwtOut,
+      swapFirst,
+    });
+
+    // D5 hard requirement: convert_to_rwt MUST run with ComputeBudget(300_000).
+    return [...buildComputeBudgetIxs(CU_BUDGETS.convertToRwt, 1000), ix];
   }
 
   function closeModal(): void {
@@ -256,11 +387,11 @@
 
     <div class="aux-warn">
       <AlertTriangle size={14} />
-      <span>Convert TX requires DEX pool, RWT vault, and capital-account
-        addresses that aren't tracked yet in the dashboard. The form will
-        currently surface a configuration error on submit — trigger the
-        <code>convert-and-fund-crank</code> instead, or extend
-        <code>layer8-builders.ts</code> with cluster-specific defaults.</span>
+      <span>Aux pubkeys (DEX master pool, RWT vault, capital ATA, fee
+        destinations) are resolved automatically from on-chain state. The
+        master pool defaults to the canonical RWT/USDC PDA — set
+        <code>PUBLIC_RWT_USDC_POOL</code> to override. CU budget is pinned
+        at 300K (D5).</span>
     </div>
   </div>
 </ManualTriggerModal>

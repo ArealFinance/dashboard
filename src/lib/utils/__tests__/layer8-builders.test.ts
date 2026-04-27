@@ -21,6 +21,7 @@ import {
   buildDexCompoundIx,
   buildOtTreasuryClaimIx,
   buildInitializeLiquidityHoldingIx,
+  buildWithdrawLiquidityHoldingIx,
   buildComputeBudgetIxs,
   encodeClaimArgs,
   decodeProof,
@@ -119,6 +120,14 @@ describe('decodeProof', () => {
     expect(bytes[0].length).toBe(32);
     expect(bytes[0][0]).toBe(0xab);
     expect(bytes[1][0]).toBe(0xcd);
+  });
+
+  // tester M-4 — malformed input rejection. `decodeProof` is the hex→bytes
+  // primitive; it enforces odd-length rejection but parses non-hex chars
+  // as NaN→0 silently. Node-width (32 bytes) is enforced downstream by
+  // `encodeClaimArgsBody` (separate test). We pin only the throw-path here.
+  it('rejects odd-length hex (cannot encode partial byte)', () => {
+    expect(() => decodeProof(['abc'])).toThrow(/Invalid hex length/);
   });
 });
 
@@ -285,5 +294,106 @@ describe('buildInitializeLiquidityHoldingIx', () => {
     expect(Array.from(ix.data)).toEqual(Array.from(expectedDisc));
     expect(ix.keys[0].isSigner).toBe(true);
     expect(ix.keys[0].pubkey.equals(args.payer)).toBe(true);
+  });
+});
+
+describe('buildWithdrawLiquidityHoldingIx', () => {
+  // SD-18: Authority-gated. Account ordering pinned to
+  // contracts/yield-distribution/src/instructions/withdraw_liquidity_holding.rs:81-140.
+  const args = {
+    ydProgramId: pk(),
+    authority: pk(),
+    config: pk(),
+    liquidityHolding: pk(),
+    liquidityHoldingAta: pk(),
+    nexusTokenAta: pk(),
+    liquidityNexus: pk(),
+    dexProgram: pk(),
+    amount: 500_000n,
+  };
+
+  it('uses canonical sha256("global:withdraw_liquidity_holding") discriminator', async () => {
+    const ix = await buildWithdrawLiquidityHoldingIx(args);
+    const expectedDisc = await discWithdrawLiquidityHolding();
+    expect(Array.from(new Uint8Array(ix.data).subarray(0, 8))).toEqual(
+      Array.from(expectedDisc),
+    );
+    // Same as nodeDisc — keep the redundant assertion to catch web-crypto drift.
+    expect(Array.from(expectedDisc)).toEqual(
+      Array.from(nodeDisc('withdraw_liquidity_holding')),
+    );
+  });
+
+  it('produces ix with exactly 9 accounts in pinned order', async () => {
+    const ix = await buildWithdrawLiquidityHoldingIx(args);
+    expect(ix.keys.length).toBe(9);
+
+    // Order pin: authority (signer, mut), config (read), liquidity_holding (mut),
+    // liquidity_holding_ata (mut), nexus_token_ata (mut), liquidity_nexus (mut),
+    // dex_program (read), token_program (read), system_program (read).
+    expect(ix.keys[0].pubkey.equals(args.authority)).toBe(true);
+    expect(ix.keys[0].isSigner).toBe(true);
+    expect(ix.keys[0].isWritable).toBe(true);
+
+    expect(ix.keys[1].pubkey.equals(args.config)).toBe(true);
+    expect(ix.keys[1].isWritable).toBe(false);
+
+    expect(ix.keys[2].pubkey.equals(args.liquidityHolding)).toBe(true);
+    expect(ix.keys[2].isWritable).toBe(true);
+
+    expect(ix.keys[3].pubkey.equals(args.liquidityHoldingAta)).toBe(true);
+    expect(ix.keys[3].isWritable).toBe(true);
+
+    expect(ix.keys[4].pubkey.equals(args.nexusTokenAta)).toBe(true);
+    expect(ix.keys[4].isWritable).toBe(true);
+
+    expect(ix.keys[5].pubkey.equals(args.liquidityNexus)).toBe(true);
+    expect(ix.keys[5].isWritable).toBe(true);
+
+    expect(ix.keys[6].pubkey.equals(args.dexProgram)).toBe(true);
+    expect(ix.keys[6].isWritable).toBe(false);
+
+    // 7 = SPL token program
+    expect(ix.keys[7].pubkey.equals(SPL_TOKEN_PROGRAM_ID)).toBe(true);
+    // 8 = System program
+    expect(ix.keys[8].pubkey.equals(SystemProgram.programId)).toBe(true);
+  });
+
+  it('encodes data: disc(8) + amount(u64 LE) = 16 bytes total', async () => {
+    const ix = await buildWithdrawLiquidityHoldingIx(args);
+    expect(ix.data.length).toBe(16);
+    const data = new Uint8Array(ix.data);
+    const expectedDisc = await discWithdrawLiquidityHolding();
+    expect(Array.from(data.subarray(0, 8))).toEqual(Array.from(expectedDisc));
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    expect(view.getBigUint64(8, true)).toBe(500_000n);
+  });
+
+  it('encodes amount=0 as 8 zero bytes (handler will revert with ZeroAmount)', async () => {
+    const ix = await buildWithdrawLiquidityHoldingIx({ ...args, amount: 0n });
+    const data = new Uint8Array(ix.data);
+    expect(data.length).toBe(16);
+    for (let i = 8; i < 16; i++) expect(data[i]).toBe(0);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// CU_BUDGETS — pinned per-ix CU values (D5 + arch LOW-1)
+// -----------------------------------------------------------------------------
+
+describe('CU_BUDGETS', () => {
+  it('pins convertToRwt at 300_000 (D5 hard requirement, ~280K measured)', async () => {
+    const { CU_BUDGETS } = await import('../layer8-builders');
+    expect(CU_BUDGETS.convertToRwt).toBe(300_000);
+  });
+
+  it('pins withdrawLiquidityHolding at 150_000 (Transfer + nexus_record_deposit CPI)', async () => {
+    const { CU_BUDGETS } = await import('../layer8-builders');
+    expect(CU_BUDGETS.withdrawLiquidityHolding).toBe(150_000);
+  });
+
+  it('pins claim variants at 200_000 (proof walk + 3-way split + transfers)', async () => {
+    const { CU_BUDGETS } = await import('../layer8-builders');
+    expect(CU_BUDGETS.claim).toBe(200_000);
   });
 });

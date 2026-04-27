@@ -79,6 +79,17 @@ function concatBytes(...parts: Uint8Array[]): Uint8Array {
 // CU budget helpers
 // -----------------------------------------------------------------------------
 
+/**
+ * Per-ix CU budgets pinned by tests so a regression to a smaller value cannot
+ * silently land. The 300K convert budget is a HARD on-chain requirement
+ * (D5 — handler measured ~280K CU on the swap+mint path).
+ */
+export const CU_BUDGETS = {
+  convertToRwt: 300_000,
+  withdrawLiquidityHolding: 150_000,
+  claim: 200_000,
+} as const;
+
 /** Build the standard 2-ix CU prefix used by all Layer 8 actions. */
 export function buildComputeBudgetIxs(
   units: number,
@@ -354,6 +365,68 @@ export async function buildOtTreasuryClaimIx(
       { pubkey: args.ydClaimStatus, isSigner: false, isWritable: true },
       { pubkey: args.ydRewardVault, isSigner: false, isWritable: true },
       { pubkey: args.ydProgramId, isSigner: false, isWritable: false },
+      { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+  });
+}
+
+// -----------------------------------------------------------------------------
+// YD::withdraw_liquidity_holding (Layer 9 R20 — Authority-gated atomic drain)
+// -----------------------------------------------------------------------------
+
+export interface BuildWithdrawLiquidityHoldingArgs {
+  ydProgramId: PublicKey;
+  /** DistributionConfig.authority signer — required by has_one. SD-18. */
+  authority: PublicKey;
+  config: PublicKey;
+  liquidityHolding: PublicKey;
+  liquidityHoldingAta: PublicKey;
+  nexusTokenAta: PublicKey;
+  liquidityNexus: PublicKey;
+  /** DEX program (= NEXUS_HOSTING_PROGRAM_ID per D17). */
+  dexProgram: PublicKey;
+
+  amount: bigint;
+}
+
+/**
+ * Build `YD::withdraw_liquidity_holding` ix. 9 accounts; data = disc(8) + u64(8) = 16 bytes.
+ *
+ * Account order matches the on-chain handler in
+ * `contracts/yield-distribution/src/instructions/withdraw_liquidity_holding.rs:81-140`:
+ *   1. authority           (signer, mut)
+ *   2. config              (read)
+ *   3. liquidity_holding   (mut)
+ *   4. liquidity_holding_ata (mut)
+ *   5. nexus_token_ata     (mut)
+ *   6. liquidity_nexus     (mut)
+ *   7. dex_program         (read)
+ *   8. token_program       (read)
+ *   9. system_program      (read)
+ *
+ * SD-18: Authority-gated. Dashboard surface is advisory only; on-chain
+ * `has_one = authority` enforces.
+ */
+export async function buildWithdrawLiquidityHoldingIx(
+  args: BuildWithdrawLiquidityHoldingArgs,
+): Promise<TransactionInstruction> {
+  const disc = await discWithdrawLiquidityHolding();
+  const data = new Uint8Array(8 + 8);
+  data.set(disc, 0);
+  writeU64LE(data, 8, args.amount);
+
+  return new TransactionInstruction({
+    programId: args.ydProgramId,
+    data: Buffer.from(data),
+    keys: [
+      { pubkey: args.authority, isSigner: true, isWritable: true },
+      { pubkey: args.config, isSigner: false, isWritable: false },
+      { pubkey: args.liquidityHolding, isSigner: false, isWritable: true },
+      { pubkey: args.liquidityHoldingAta, isSigner: false, isWritable: true },
+      { pubkey: args.nexusTokenAta, isSigner: false, isWritable: true },
+      { pubkey: args.liquidityNexus, isSigner: false, isWritable: true },
+      { pubkey: args.dexProgram, isSigner: false, isWritable: false },
       { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],

@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Droplet, RefreshCw, AlertTriangle, Power, Lock } from 'lucide-svelte';
+  import { PublicKey } from '@solana/web3.js';
+  import { Droplet, RefreshCw, AlertTriangle, Power, Lock, Unlock } from 'lucide-svelte';
   import { connection, network } from '$lib/stores/network';
   import { liquidityHolding } from '$lib/stores/layer8';
   import { wallet } from '$lib/stores/wallet';
   import { ydProgramId } from '$lib/stores/yd';
   import { rwtProgramId } from '$lib/stores/rwt';
+  import { dexProgramId } from '$lib/stores/dex';
+  import { programId as otProgramId } from '$lib/stores/ot';
   import {
     fetchEvents,
     readRwtVault,
@@ -17,11 +20,15 @@
     formatTimestamp,
     explorerUrl,
     formatAddress,
+    parseDecimal,
   } from '$lib/utils/format';
   import {
     buildInitializeLiquidityHoldingIx,
+    buildWithdrawLiquidityHoldingIx,
     buildComputeBudgetIxs,
+    CU_BUDGETS,
   } from '$lib/utils/layer8-builders';
+  import { resolveWithdrawLiquidityHoldingAccounts } from '$lib/utils/layer8-resolvers';
   import { findAta, ASSOCIATED_TOKEN_PROGRAM_ID, findRwtVaultPda } from '$lib/utils/pda';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import ManualTriggerModal from '$lib/components/layer8/ManualTriggerModal.svelte';
@@ -36,10 +43,35 @@
   let initModalOpen = false;
   let withdrawModalOpen = false;
 
+  // Withdraw form state.
+  let withdrawAmountInput = '';
+  let confirmTextInput = '';
+  let expectedAuthority: string | null = null;
+  let liquidityHoldingAtaBalance: bigint = 0n;
+
   $: walletState = $wallet;
   $: clusterTag = $network;
   $: state = $liquidityHolding.state;
   $: pda = $liquidityHolding.pda;
+  $: walletIsAuthority =
+    !!walletState.publicKey &&
+    !!expectedAuthority &&
+    walletState.publicKey.toBase58() === expectedAuthority;
+  // Available drain capital — min(state.totalReceived - state.totalWithdrawn, ATA balance).
+  $: drainable = (() => {
+    if (!state) return 0n;
+    const stateRemaining = state.totalReceived > state.totalWithdrawn
+      ? state.totalReceived - state.totalWithdrawn
+      : 0n;
+    if (liquidityHoldingAtaBalance === 0n) return stateRemaining;
+    return stateRemaining < liquidityHoldingAtaBalance
+      ? stateRemaining
+      : liquidityHoldingAtaBalance;
+  })();
+  $: confirmTextRequired = withdrawAmountInput.trim().length > 0
+    ? `withdraw ${withdrawAmountInput.trim()}`
+    : 'withdraw 0';
+  $: confirmOk = confirmTextInput.trim() === confirmTextRequired;
 
   async function refresh(): Promise<void> {
     loading = true;
@@ -96,17 +128,128 @@
     return [...buildComputeBudgetIxs(80_000, 1000), ix];
   }
 
-  function buildWithdrawIxStub(): never {
-    // Per D14, the placeholder ix unconditionally reverts. We surface an
-    // explicit error here so users don't waste a TX fee.
-    throw new Error(
-      'withdraw_liquidity_holding is a Layer 9 placeholder — it always reverts ' +
-        'with NexusNotInitialized until the Nexus contract ships.',
+  /**
+   * Read the SPL balance of the LiquidityHolding RWT ATA — used for the
+   * pre-flight `amount <= min(state.remaining, ATA.balance)` gate.
+   */
+  async function loadAtaBalance(): Promise<void> {
+    if (!pda) return;
+    try {
+      const conn = $connection;
+      const [vaultPda] = findRwtVaultPda(rwtProgramId);
+      const vault = await readRwtVault(conn, vaultPda);
+      if (!vault) {
+        liquidityHoldingAtaBalance = 0n;
+        return;
+      }
+      const ata = findAta(pda, new PublicKey(vault.rwtMint));
+      const info = await conn.getAccountInfo(ata, 'confirmed');
+      if (!info || info.data.length < 72) {
+        liquidityHoldingAtaBalance = 0n;
+        return;
+      }
+      const view = new DataView(
+        info.data.buffer,
+        info.data.byteOffset,
+        info.data.byteLength,
+      );
+      liquidityHoldingAtaBalance = view.getBigUint64(64, true);
+    } catch {
+      liquidityHoldingAtaBalance = 0n;
+    }
+  }
+
+  /**
+   * Pre-load the YD config authority pin for the SD-18 advisory lock-icon
+   * gate (the on-chain handler still enforces via has_one).
+   */
+  async function loadAuthority(): Promise<void> {
+    try {
+      const accounts = await resolveWithdrawLiquidityHoldingAccounts(
+        $connection,
+        {
+          ydProgramId,
+          rwtEngineProgramId: rwtProgramId,
+          dexProgramId,
+          otProgramId,
+        },
+      );
+      expectedAuthority = accounts.expectedAuthority.toBase58();
+    } catch {
+      // YD config not initialized yet — leave authority hint unset.
+      expectedAuthority = null;
+    }
+  }
+
+  function validateWithdraw(): void {
+    if (!walletState.publicKey) throw new Error('Wallet not connected');
+    const amount = parseDecimal(withdrawAmountInput, RWT_DECIMALS);
+    if (amount <= 0n) throw new Error('Amount must be greater than zero');
+    if (amount > drainable) {
+      throw new Error(
+        `Amount (${formatAmount(amount, RWT_DECIMALS)} RWT) exceeds drainable ` +
+          `balance (${formatAmount(drainable, RWT_DECIMALS)} RWT). ` +
+          'Drainable = min(state.totalReceived - state.totalWithdrawn, ATA balance).',
+      );
+    }
+    // Type-to-confirm second-step pattern (high-impact op moves principal).
+    if (!confirmOk) {
+      throw new Error(
+        `Confirmation phrase must equal exactly: "${confirmTextRequired}"`,
+      );
+    }
+  }
+
+  async function buildWithdrawIx() {
+    if (!walletState.publicKey) throw new Error('Wallet not connected');
+
+    const accounts = await resolveWithdrawLiquidityHoldingAccounts(
+      $connection,
+      {
+        ydProgramId,
+        rwtEngineProgramId: rwtProgramId,
+        dexProgramId,
+        otProgramId,
+      },
     );
+
+    // Surface the SD-18 advisory check with a clear error before we waste
+    // a TX fee. The contract enforces `has_one = authority` regardless.
+    if (
+      walletState.publicKey.toBase58() !== accounts.expectedAuthority.toBase58()
+    ) {
+      throw new Error(
+        `Wallet ${walletState.publicKey.toBase58()} is not the configured ` +
+          `DistributionConfig authority. Expected: ${accounts.expectedAuthority.toBase58()}. ` +
+          '(SD-18: withdraw_liquidity_holding is Authority-gated.)',
+      );
+    }
+
+    const amount = parseDecimal(withdrawAmountInput, RWT_DECIMALS);
+    const ix = await buildWithdrawLiquidityHoldingIx({
+      ydProgramId,
+      authority: walletState.publicKey,
+      config: accounts.config,
+      liquidityHolding: accounts.liquidityHolding,
+      liquidityHoldingAta: accounts.liquidityHoldingAta,
+      nexusTokenAta: accounts.nexusTokenAta,
+      liquidityNexus: accounts.liquidityNexus,
+      dexProgram: accounts.dexProgram,
+      amount,
+    });
+
+    // CU budget per Substep 11 plan: 150K (atomic SPL Transfer + nexus_record_deposit CPI).
+    return [...buildComputeBudgetIxs(CU_BUDGETS.withdrawLiquidityHolding, 1000), ix];
+  }
+
+  function fillFullBalance(): void {
+    withdrawAmountInput = formatAmount(drainable, RWT_DECIMALS).replace(/,/g, '');
   }
 
   onMount(() => {
     void refresh();
+    void loadAtaBalance();
+    void loadAuthority();
   });
 </script>
 
@@ -188,12 +331,25 @@
     {/if}
     <button
       class="btn btn-ghost"
-      on:click={() => (withdrawModalOpen = true)}
-      disabled={!walletState.connected}
-      title="Disabled until Layer 9 Nexus ships"
+      on:click={() => {
+        confirmTextInput = '';
+        withdrawAmountInput = '';
+        void loadAtaBalance();
+        void loadAuthority();
+        withdrawModalOpen = true;
+      }}
+      disabled={!walletState.connected || !state}
+      title={walletIsAuthority
+        ? 'Authority-gated drain (SD-18) — wallet matches the configured authority.'
+        : 'SD-18: only the configured DistributionConfig authority can submit. Connect with the right wallet.'}
     >
-      <Lock size={14} />
-      Withdraw (Layer 9)
+      {#if walletIsAuthority}
+        <Unlock size={14} />
+        Withdraw (Authority)
+      {:else}
+        <Lock size={14} />
+        Withdraw (Authority-gated)
+      {/if}
     </button>
     {#if !walletState.connected}
       <span class="muted-note">Connect a wallet to perform admin actions.</span>
@@ -276,18 +432,93 @@
 
 <ManualTriggerModal
   bind:open={withdrawModalOpen}
-  title="Withdraw Liquidity Holding"
-  description="Layer 9 Nexus required — the on-chain instruction unconditionally reverts with NexusNotInitialized until then."
-  buildIx={buildWithdrawIxStub}
+  title="Withdraw Liquidity Holding → Nexus"
+  description="Atomic drain of LiquidityHolding RWT ATA into the DEX-side LiquidityNexus + counter-bump CPI. Authority-gated (SD-18). High-impact op — type the confirmation phrase to enable submit."
+  buildIx={buildWithdrawIx}
+  validate={validateWithdraw}
   permissionless={false}
-  on:close={() => (withdrawModalOpen = false)}
+  on:close={() => {
+    withdrawModalOpen = false;
+    void refresh();
+    void loadAtaBalance();
+  }}
 >
-  <div class="alert alert-warning withdrawal-warn">
-    <AlertTriangle size={14} />
-    <span>This action cannot succeed until the Layer 9 Nexus contract is
-      deployed and the LiquidityHolding allocator strategy is configured. The
-      <code>withdraw_liquidity_holding</code> ix is a one-way no-op
-      placeholder per D14 (anti-honeypot guardrail).</span>
+  <div class="modal-form">
+    {#if !walletIsAuthority && expectedAuthority}
+      <div class="alert alert-warning withdrawal-warn">
+        <Lock size={14} />
+        <span>
+          <strong>Wallet is not the DistributionConfig authority.</strong>
+          Expected: <code>{formatAddress(expectedAuthority, 8)}</code>.
+          The on-chain handler will revert via <code>has_one = authority</code>;
+          submit will fail.
+        </span>
+      </div>
+    {/if}
+
+    <div class="state-grid mini">
+      <div class="kpi">
+        <span class="kpi-label">State remaining</span>
+        <span class="kpi-value mono">
+          {#if state}
+            {formatAmount(
+              state.totalReceived > state.totalWithdrawn
+                ? state.totalReceived - state.totalWithdrawn
+                : 0n,
+              RWT_DECIMALS,
+            )} RWT
+          {:else}–{/if}
+        </span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">ATA balance</span>
+        <span class="kpi-value mono">{formatAmount(liquidityHoldingAtaBalance, RWT_DECIMALS)} RWT</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Drainable</span>
+        <span class="kpi-value mono">{formatAmount(drainable, RWT_DECIMALS)} RWT</span>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label for="withdraw-amount">Amount to withdraw (RWT)</label>
+      <div class="row-with-action">
+        <input
+          id="withdraw-amount"
+          type="text"
+          inputmode="decimal"
+          bind:value={withdrawAmountInput}
+          placeholder="0.0"
+        />
+        <button class="btn btn-ghost btn-sm" on:click={fillFullBalance} type="button">
+          Use full balance
+        </button>
+      </div>
+      <span class="hint">CU budget pinned at 150K. Drain runs atomically (Transfer + counter-bump).</span>
+    </div>
+
+    <div class="form-row">
+      <label for="confirm-text">
+        Confirmation phrase — type:
+        <code class="mono">{confirmTextRequired}</code>
+      </label>
+      <input
+        id="confirm-text"
+        type="text"
+        bind:value={confirmTextInput}
+        placeholder="confirmation phrase"
+      />
+      {#if confirmTextInput && !confirmOk}
+        <span class="hint hint-error">Phrase mismatch — submit disabled.</span>
+      {/if}
+    </div>
+
+    <div class="alert alert-warning withdrawal-warn">
+      <AlertTriangle size={14} />
+      <span>Drain destination is the singleton DEX-side LiquidityNexus PDA.
+        Funds become Nexus-managed LP capital; reverting requires a Nexus
+        Manager `nexus_withdraw_profits` flow. Authority-gated (SD-18).</span>
+    </div>
   </div>
 </ManualTriggerModal>
 
@@ -484,6 +715,60 @@
   .init-info { color: var(--color-text-secondary); font-size: var(--text-sm); }
   .init-info ul { padding-left: var(--space-4); margin: var(--space-1) 0; }
   .init-info li { margin: 2px 0; }
+
+  .modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .modal-form .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .modal-form .form-row label {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .modal-form .form-row label code {
+    font-family: var(--font-mono);
+    font-size: 0.95em;
+    background: var(--color-bg);
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+  }
+  .modal-form input[type='text'] {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+  .row-with-action {
+    display: flex;
+    gap: var(--space-2);
+    align-items: stretch;
+  }
+  .row-with-action input[type='text'] {
+    flex: 1;
+  }
+  .btn-sm {
+    font-size: var(--text-xs);
+    padding: 4px 10px;
+  }
+  .hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+  }
+  .hint-error {
+    color: var(--color-danger);
+  }
+  .state-grid.mini {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2);
+  }
 
   .btn {
     display: inline-flex;

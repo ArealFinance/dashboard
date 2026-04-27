@@ -68,15 +68,11 @@ export function resolveUsdcMint(): PublicKey {
 }
 
 // -----------------------------------------------------------------------------
-// LiquidityNexus PDA derivation
+// LiquidityNexus PDA derivation (re-exported from pda.ts for back-compat).
 // -----------------------------------------------------------------------------
 
-export function findLiquidityNexusPda(programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('liquidity_nexus')],
-    programId,
-  );
-}
+export { findLiquidityNexusPda } from '$lib/utils/pda';
+import { findLiquidityNexusPda } from '$lib/utils/pda';
 
 // -----------------------------------------------------------------------------
 // Nexus state store

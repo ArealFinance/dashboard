@@ -1,18 +1,18 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { PublicKey } from '@solana/web3.js';
+  import { PublicKey, type TransactionInstruction } from '@solana/web3.js';
   import {
     Coins,
-    GitBranch,
     Building2,
     Repeat2,
     RefreshCw,
     AlertTriangle,
+    Download,
   } from 'lucide-svelte';
   import { connection, network } from '$lib/stores/network';
   import { ydStore, ydProgramId } from '$lib/stores/yd';
   import { rwtProgramId } from '$lib/stores/rwt';
-  import { dexProgramId } from '$lib/stores/dex';
+  import { dexProgramId, dexStore } from '$lib/stores/dex';
   import { programId as otProgramId } from '$lib/stores/ot';
   import { wallet } from '$lib/stores/wallet';
   import {
@@ -20,6 +20,7 @@
     fetchCompoundYieldEvents,
     fetchTreasuryYieldEvents,
     fetchMerkleProof,
+    readRwtVault,
     type YieldDistributedEvent,
     type CompoundYieldExecutedEvent,
     type TreasuryYieldClaimedEvent,
@@ -33,6 +34,21 @@
     explorerUrl,
     isValidAddress,
   } from '$lib/utils/format';
+  import {
+    buildRwtClaimYieldIx,
+    buildDexCompoundIx,
+    buildOtTreasuryClaimIx,
+    buildComputeBudgetIxs,
+    decodeProof,
+    CU_BUDGETS,
+  } from '$lib/utils/layer8-builders';
+  import {
+    resolveRwtClaimAccounts,
+    resolveDexCompoundAccounts,
+    resolveTreasuryClaimAccounts,
+    readClaimStatusCumulative,
+  } from '$lib/utils/layer8-resolvers';
+  import { findRwtVaultPda } from '$lib/utils/pda';
   import EventFeed from '$lib/components/layer8/EventFeed.svelte';
   import MerkleProofDisplay from '$lib/components/layer8/MerkleProofDisplay.svelte';
   import ManualTriggerModal from '$lib/components/layer8/ManualTriggerModal.svelte';
@@ -57,10 +73,32 @@
   let proofResult: MerkleProof | null = null;
   let proofStoreUrl: string | undefined;
 
-  // Modal state — shared shell, not yet wired to ix builder for full-claim
-  // flows (requires aux pubkeys per ix). Kept ready for Step 10 polish.
+  // Per-event quick-claim modal (SD-23): each event row carries (otMint,
+  // distributor, pool?) and we resolve the full account-set on submit.
   let claimModalOpen = false;
   let claimModalTitle = '';
+  let claimModalDescription = '';
+  type SelectedClaim =
+    | { kind: 'rwt-vault'; otMint: string }
+    | { kind: 'pool'; otMint: string; pool: string }
+    | { kind: 'treasury'; otMint: string; ydOtMint: string };
+  let selectedClaim: SelectedClaim | null = null;
+
+  // Vesting / already-claimed state surfaced in the modal.
+  let vestingProgress: {
+    lockedVested: bigint;
+    maxTotalClaim: bigint;
+    totalFunded: bigint;
+    totalClaimed: bigint;
+  } | null = null;
+  let alreadyClaimedAmount: bigint = 0n;
+  let proofForClaim: MerkleProof | null = null;
+  let claimResolveError: string | null = null;
+  // Sec M-2 — proof staleness gate: distributor's current epoch read at
+  // resolve time. If proof.epoch < distributorEpoch, the on-chain handler
+  // reverts (proof signed against stale merkle root); refuse submit
+  // client-side to save the user a TX fee.
+  let distributorEpoch: bigint = 0n;
 
   $: walletState = $wallet;
   $: clusterTag = $network;
@@ -136,18 +174,297 @@
 
   $: onChainRoot = proofResult ? onChainRootForResult() : null;
 
-  function buildModalIxStub(): never {
-    throw new Error(
-      'Full claim TX builder requires aux pubkeys (RWT vault claim ATA, ' +
-        'pool target vault, OT treasury) not yet wired into per-OT context. ' +
-        'Use the yield-claim-crank or extend layer8-builders.ts.',
+  /**
+   * Open the claim modal for a specific event row, pre-resolve vesting state
+   * and the claim_status cumulative so the modal renders accurate progress.
+   */
+  async function openClaimForRwtVault(otMint: string): Promise<void> {
+    selectedClaim = { kind: 'rwt-vault', otMint };
+    claimModalTitle = `Claim yield · RWT Vault`;
+    claimModalDescription =
+      'RWT Vault claims vested RWT from the YD distributor and splits 70/15/15 ' +
+      '(book value / liquidity / protocol revenue). CU pinned at 200K.';
+    await preloadClaimContext();
+    claimModalOpen = true;
+  }
+
+  async function openClaimForPool(ev: CompoundYieldExecutedEvent): Promise<void> {
+    selectedClaim = { kind: 'pool', otMint: ev.otMint, pool: ev.pool };
+    claimModalTitle = `Compound yield · DEX pool`;
+    claimModalDescription =
+      'Pool PDA claims vested RWT from the YD distributor and folds it into the ' +
+      'pool reserve on the RWT side (auto-compound). CU pinned at 200K.';
+    await preloadClaimContext();
+    claimModalOpen = true;
+  }
+
+  async function openClaimForTreasury(ev: TreasuryYieldClaimedEvent): Promise<void> {
+    selectedClaim = {
+      kind: 'treasury',
+      otMint: ev.otMint,
+      ydOtMint: ev.ydOtMint,
+    };
+    claimModalTitle = `Claim yield · OT Treasury`;
+    claimModalDescription =
+      'OT Treasury claims vested RWT from the YD distributor (per-OT). ' +
+      'CU pinned at 200K.';
+    await preloadClaimContext();
+    claimModalOpen = true;
+  }
+
+  /**
+   * Resolve vesting + already-claimed for the currently selected claim.
+   * Best-effort: errors are surfaced as `claimResolveError`; the modal still
+   * opens so the user can see the diagnostic.
+   */
+  async function preloadClaimContext(): Promise<void> {
+    vestingProgress = null;
+    alreadyClaimedAmount = 0n;
+    proofForClaim = null;
+    claimResolveError = null;
+    if (!selectedClaim) return;
+    const conn = $connection;
+    try {
+      const programs = {
+        ydProgramId,
+        rwtEngineProgramId: rwtProgramId,
+        dexProgramId,
+        otProgramId,
+      };
+      let claimStatusPda: PublicKey;
+      let distributorPda: PublicKey;
+      let claimantPda: PublicKey;
+
+      if (selectedClaim.kind === 'rwt-vault') {
+        const otMintPk = new PublicKey(selectedClaim.otMint);
+        const accounts = await resolveRwtClaimAccounts(conn, programs, otMintPk);
+        vestingProgress = accounts.vesting;
+        distributorEpoch = accounts.distributorEpoch;
+        claimStatusPda = accounts.ydClaimStatus;
+        distributorPda = accounts.ydDistributor;
+        claimantPda = accounts.rwtVault;
+      } else if (selectedClaim.kind === 'pool') {
+        // Need pool data + RWT mint.
+        const [vaultPda] = findRwtVaultPda(rwtProgramId);
+        const vault = await readRwtVault(conn, vaultPda);
+        if (!vault) throw new Error('RwtVault not initialized');
+        const rwtMint = new PublicKey(vault.rwtMint);
+        const poolData = $dexStore.pools.find((p) => p.pda === (selectedClaim as { kind: 'pool'; pool: string; otMint: string }).pool);
+        if (!poolData) {
+          throw new Error(
+            `Pool ${(selectedClaim as { kind: 'pool'; pool: string; otMint: string }).pool} not in DEX store — refresh DEX first.`,
+          );
+        }
+        const otMintPk = new PublicKey(selectedClaim.otMint);
+        const accounts = await resolveDexCompoundAccounts(
+          conn,
+          programs,
+          otMintPk,
+          poolData,
+          rwtMint,
+        );
+        vestingProgress = accounts.vesting;
+        distributorEpoch = accounts.distributorEpoch;
+        claimStatusPda = accounts.ydClaimStatus;
+        distributorPda = accounts.ydDistributor;
+        claimantPda = accounts.poolState;
+      } else {
+        const [vaultPda] = findRwtVaultPda(rwtProgramId);
+        const vault = await readRwtVault(conn, vaultPda);
+        if (!vault) throw new Error('RwtVault not initialized');
+        const rwtMint = new PublicKey(vault.rwtMint);
+        const otMintPk = new PublicKey(selectedClaim.otMint);
+        const ydOtMintPk = new PublicKey(selectedClaim.ydOtMint);
+        const accounts = await resolveTreasuryClaimAccounts(
+          conn,
+          programs,
+          otMintPk,
+          ydOtMintPk,
+          rwtMint,
+        );
+        vestingProgress = accounts.vesting;
+        distributorEpoch = accounts.distributorEpoch;
+        claimStatusPda = accounts.ydClaimStatus;
+        distributorPda = accounts.ydDistributor;
+        claimantPda = accounts.otTreasury;
+      }
+
+      // Already-claimed gate: read ClaimStatus.cumulative.
+      alreadyClaimedAmount = await readClaimStatusCumulative(conn, claimStatusPda);
+
+      // Pre-fetch proof from publisher.
+      const url = resolveProofStoreUrl();
+      if (!url) {
+        claimResolveError =
+          'PUBLIC_PROOF_STORE_URL is not configured — cannot fetch Merkle proof. Submit will fail.';
+        return;
+      }
+      proofForClaim = await fetchMerkleProof(url, distributorPda, claimantPda);
+      if (!proofForClaim) {
+        claimResolveError = `No proof published for distributor ${distributorPda.toBase58()} / claimant ${claimantPda.toBase58()}.`;
+      }
+    } catch (err) {
+      claimResolveError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  function validateClaim(): void {
+    if (!selectedClaim) throw new Error('No claim selected');
+    if (!walletState.publicKey) throw new Error('Wallet not connected');
+    if (!proofForClaim) throw new Error('Merkle proof not loaded');
+    const cumulative = BigInt(proofForClaim.cumulativeAmount);
+    if (alreadyClaimedAmount >= cumulative) {
+      throw new Error(
+        `Nothing to claim — already claimed ${formatAmount(alreadyClaimedAmount, RWT_DECIMALS)} >= cumulative ${formatAmount(cumulative, RWT_DECIMALS)}.`,
+      );
+    }
+    // Sec M-1 — over-claim guard. The on-chain handler caps cumulative at
+    // `distributor.maxTotalClaim`; a user-signed proof with a larger value
+    // reverts. Catch client-side to save fees.
+    if (vestingProgress && cumulative > vestingProgress.maxTotalClaim) {
+      throw new Error(
+        `Proof cumulative ${formatAmount(cumulative, RWT_DECIMALS)} exceeds distributor max ${formatAmount(vestingProgress.maxTotalClaim, RWT_DECIMALS)} — proof is invalid for this distributor.`,
+      );
+    }
+    // Sec M-2 — proof staleness gate. The publisher signs each proof against
+    // a specific merkle root (one per epoch); when the distributor advances
+    // its epoch the prior root is invalidated. Reject stale proofs upfront.
+    if (BigInt(proofForClaim.epoch) < distributorEpoch) {
+      throw new Error(
+        `Proof is stale: proof.epoch=${proofForClaim.epoch} < distributor.epoch=${distributorEpoch.toString()}. Refresh the proof publisher.`,
+      );
+    }
+  }
+
+  async function buildClaimIx(): Promise<TransactionInstruction[]> {
+    if (!selectedClaim) throw new Error('No claim selected');
+    if (!walletState.publicKey) throw new Error('Wallet not connected');
+    if (!proofForClaim) throw new Error('Merkle proof not loaded');
+
+    const conn = $connection;
+    const programs = {
+      ydProgramId,
+      rwtEngineProgramId: rwtProgramId,
+      dexProgramId,
+      otProgramId,
+    };
+    const cumulative = BigInt(proofForClaim.cumulativeAmount);
+    const proofBytes = decodeProof(proofForClaim.proof);
+
+    if (selectedClaim.kind === 'rwt-vault') {
+      const otMintPk = new PublicKey(selectedClaim.otMint);
+      const accounts = await resolveRwtClaimAccounts(conn, programs, otMintPk);
+      const ix = await buildRwtClaimYieldIx({
+        rwtEngineProgramId: rwtProgramId,
+        ydProgramId,
+        signer: walletState.publicKey,
+        rwtVault: accounts.rwtVault,
+        distConfig: accounts.distConfig,
+        rwtClaimAta: accounts.rwtClaimAta,
+        liquidityDest: accounts.liquidityDest,
+        protocolRevenueDest: accounts.protocolRevenueDest,
+        ydConfig: accounts.ydConfig,
+        otMint: otMintPk,
+        ydDistributor: accounts.ydDistributor,
+        ydClaimStatus: accounts.ydClaimStatus,
+        ydRewardVault: accounts.ydRewardVault,
+        cumulativeAmount: cumulative,
+        proof: proofBytes,
+      });
+      return [...buildComputeBudgetIxs(CU_BUDGETS.claim, 1000), ix];
+    }
+
+    if (selectedClaim.kind === 'pool') {
+      const [vaultPda] = findRwtVaultPda(rwtProgramId);
+      const vault = await readRwtVault(conn, vaultPda);
+      if (!vault) throw new Error('RwtVault not initialized');
+      const rwtMint = new PublicKey(vault.rwtMint);
+      const poolData = $dexStore.pools.find(
+        (p) => p.pda === (selectedClaim as { kind: 'pool'; pool: string }).pool,
+      );
+      if (!poolData) throw new Error('Pool not in DEX store — refresh DEX first.');
+      const otMintPk = new PublicKey(selectedClaim.otMint);
+      const accounts = await resolveDexCompoundAccounts(
+        conn,
+        programs,
+        otMintPk,
+        poolData,
+        rwtMint,
+      );
+      const ix = await buildDexCompoundIx({
+        dexProgramId,
+        ydProgramId,
+        signer: walletState.publicKey,
+        poolState: accounts.poolState,
+        targetVault: accounts.targetVault,
+        ydConfig: accounts.ydConfig,
+        otMint: otMintPk,
+        ydDistributor: accounts.ydDistributor,
+        ydClaimStatus: accounts.ydClaimStatus,
+        ydRewardVault: accounts.ydRewardVault,
+        cumulativeAmount: cumulative,
+        proof: proofBytes,
+      });
+      return [...buildComputeBudgetIxs(CU_BUDGETS.claim, 1000), ix];
+    }
+
+    // treasury
+    const [vaultPda] = findRwtVaultPda(rwtProgramId);
+    const vault = await readRwtVault(conn, vaultPda);
+    if (!vault) throw new Error('RwtVault not initialized');
+    const rwtMint = new PublicKey(vault.rwtMint);
+    const otMintPk = new PublicKey(selectedClaim.otMint);
+    const ydOtMintPk = new PublicKey(selectedClaim.ydOtMint);
+    const accounts = await resolveTreasuryClaimAccounts(
+      conn,
+      programs,
+      otMintPk,
+      ydOtMintPk,
+      rwtMint,
     );
+    const ix = await buildOtTreasuryClaimIx({
+      otProgramId,
+      ydProgramId,
+      signer: walletState.publicKey,
+      otMint: otMintPk,
+      otTreasury: accounts.otTreasury,
+      treasuryRwtAta: accounts.treasuryRwtAta,
+      ydConfig: accounts.ydConfig,
+      ydOtMint: ydOtMintPk,
+      ydDistributor: accounts.ydDistributor,
+      ydClaimStatus: accounts.ydClaimStatus,
+      ydRewardVault: accounts.ydRewardVault,
+      cumulativeAmount: cumulative,
+      proof: proofBytes,
+    });
+    return [...buildComputeBudgetIxs(CU_BUDGETS.claim, 1000), ix];
+  }
+
+  /**
+   * SD-24: vesting progress (lockedVested / maxTotalClaim).
+   */
+  function vestingPercent(): number {
+    if (!vestingProgress || vestingProgress.maxTotalClaim === 0n) return 0;
+    const num = Number(vestingProgress.lockedVested);
+    const den = Number(vestingProgress.maxTotalClaim);
+    if (den === 0) return 0;
+    return Math.min(100, (num / den) * 100);
+  }
+
+  function claimableNow(): bigint {
+    if (!proofForClaim) return 0n;
+    const cumulative = BigInt(proofForClaim.cumulativeAmount);
+    return cumulative > alreadyClaimedAmount
+      ? cumulative - alreadyClaimedAmount
+      : 0n;
   }
 
   onMount(() => {
     proofStoreUrl = resolveProofStoreUrl();
     void refresh();
     void ydStore.refresh();
+    // DEX store needed for compound_yield resolver (looks up pool target_vault).
+    void dexStore.refresh();
   });
 </script>
 
@@ -240,6 +557,15 @@
               <a class="muted" href={explorerUrl(ev.signature, 'tx', clusterTag)} target="_blank" rel="noreferrer noopener">
                 tx {formatAddress(ev.signature, 4)}
               </a>
+              <button
+                class="btn btn-quick"
+                disabled={!walletState.connected}
+                on:click={() => openClaimForRwtVault(ev.otMint)}
+                title="Manual RWT::claim_yield for this OT mint"
+              >
+                <Download size={12} />
+                Quick-claim
+              </button>
             </footer>
           </article>
         {/each}
@@ -247,32 +573,95 @@
     {/if}
   {:else if activeClaimant === 'pool'}
     <h2 class="section-title">DEX Pools — compound_yield events</h2>
-    <EventFeed events={dexEvents} title="" showHeader={false} emptyMessage="No pool compound events yet." />
+    {#if dexEvents.length === 0}
+      <div class="empty">No pool compound events yet.</div>
+    {:else}
+      <div class="events-list">
+        {#each dexEvents as ev (ev.signature)}
+          <article class="event-card">
+            <header class="event-head">
+              <span class="ot mono" title={ev.otMint}>OT {formatAddress(ev.otMint, 6)}</span>
+              <span class="event-amount mono">+{formatAmount(ev.rwtClaimed, RWT_DECIMALS)} RWT</span>
+            </header>
+            <div class="splits">
+              <div class="split">
+                <span class="split-label">Pool</span>
+                <span class="split-value mono">{formatAddress(ev.pool, 6)}</span>
+              </div>
+              <div class="split">
+                <span class="split-label">RWT side</span>
+                <span class="split-value mono">{ev.rwtSide === 0 ? 'A' : 'B'}</span>
+              </div>
+              <div class="split">
+                <span class="split-label">Reserve after</span>
+                <span class="split-value mono">{formatAmount(ev.reserveAfter, RWT_DECIMALS)}</span>
+              </div>
+            </div>
+            <footer class="event-foot">
+              {#if ev.blockTime}
+                <span class="muted">{formatTimestamp(BigInt(ev.blockTime))}</span>
+              {/if}
+              <a class="muted" href={explorerUrl(ev.signature, 'tx', clusterTag)} target="_blank" rel="noreferrer noopener">
+                tx {formatAddress(ev.signature, 4)}
+              </a>
+              <button
+                class="btn btn-quick"
+                disabled={!walletState.connected}
+                on:click={() => openClaimForPool(ev)}
+                title="Manual DEX::compound_yield for this pool"
+              >
+                <Download size={12} />
+                Quick-claim
+              </button>
+            </footer>
+          </article>
+        {/each}
+      </div>
+    {/if}
   {:else}
     <h2 class="section-title">OT Treasuries — claim_yd_for_treasury events</h2>
-    <EventFeed events={otEvents} title="" showHeader={false} emptyMessage="No treasury claims yet." />
+    {#if otEvents.length === 0}
+      <div class="empty">No treasury claims yet.</div>
+    {:else}
+      <div class="events-list">
+        {#each otEvents as ev (ev.signature)}
+          <article class="event-card">
+            <header class="event-head">
+              <span class="ot mono" title={ev.otMint}>OT {formatAddress(ev.otMint, 6)}</span>
+              <span class="event-amount mono">+{formatAmount(ev.amount, RWT_DECIMALS)} RWT</span>
+            </header>
+            <div class="splits">
+              <div class="split">
+                <span class="split-label">YD distributor mint</span>
+                <span class="split-value mono">{formatAddress(ev.ydOtMint, 6)}</span>
+              </div>
+            </div>
+            <footer class="event-foot">
+              {#if ev.blockTime}
+                <span class="muted">{formatTimestamp(BigInt(ev.blockTime))}</span>
+              {/if}
+              <a class="muted" href={explorerUrl(ev.signature, 'tx', clusterTag)} target="_blank" rel="noreferrer noopener">
+                tx {formatAddress(ev.signature, 4)}
+              </a>
+              <button
+                class="btn btn-quick"
+                disabled={!walletState.connected}
+                on:click={() => openClaimForTreasury(ev)}
+                title="Manual OT::claim_yd_for_treasury for this OT mint"
+              >
+                <Download size={12} />
+                Quick-claim
+              </button>
+            </footer>
+          </article>
+        {/each}
+      </div>
+    {/if}
   {/if}
 
-  <div class="claim-actions">
-    <button
-      class="btn btn-primary"
-      disabled={!walletState.connected}
-      on:click={() => {
-        claimModalTitle = activeClaimant === 'rwt-vault'
-          ? 'Manual claim_yield'
-          : activeClaimant === 'pool'
-          ? 'Manual compound_yield'
-          : 'Manual claim_yd_for_treasury';
-        claimModalOpen = true;
-      }}
-    >
-      <GitBranch size={14} />
-      Manual claim
-    </button>
-    {#if !walletState.connected}
-      <span class="muted-note">Connect a wallet to manually claim.</span>
-    {/if}
-  </div>
+  {#if !walletState.connected}
+    <span class="muted-note">Connect a wallet to use quick-claim buttons on event rows.</span>
+  {/if}
 </section>
 
 <section class="section">
@@ -312,15 +701,86 @@
 <ManualTriggerModal
   bind:open={claimModalOpen}
   title={claimModalTitle}
-  description="Manual claim builders are stubbed in v0.1 — they require auxiliary pubkeys per claimant kind. Use the yield-claim-crank for now."
-  buildIx={buildModalIxStub}
-  on:close={() => (claimModalOpen = false)}
+  description={claimModalDescription}
+  buildIx={buildClaimIx}
+  validate={validateClaim}
+  on:close={() => {
+    claimModalOpen = false;
+    selectedClaim = null;
+    vestingProgress = null;
+    proofForClaim = null;
+  }}
 >
-  <p class="modal-stub">
-    The full claim flow needs cluster-specific aux pubkeys (vault claim ATA,
-    pool target vault, OT treasury). The dashboard ships a stub that surfaces
-    a clear error to prevent invalid TX submissions.
-  </p>
+  <div class="claim-modal-body">
+    {#if selectedClaim}
+      <div class="kpis">
+        <div class="kpi">
+          <span class="kpi-label">OT mint</span>
+          <span class="kpi-value mono">{formatAddress(selectedClaim.otMint, 6)}</span>
+        </div>
+        {#if selectedClaim.kind === 'pool'}
+          <div class="kpi">
+            <span class="kpi-label">Pool</span>
+            <span class="kpi-value mono">{formatAddress(selectedClaim.pool, 6)}</span>
+          </div>
+        {/if}
+        {#if selectedClaim.kind === 'treasury'}
+          <div class="kpi">
+            <span class="kpi-label">YD distributor mint</span>
+            <span class="kpi-value mono">{formatAddress(selectedClaim.ydOtMint, 6)}</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    {#if vestingProgress}
+      <div class="vesting-card">
+        <div class="vesting-head">
+          <span class="vesting-label">Vesting progress (SD-24)</span>
+          <span class="vesting-pct mono">{vestingPercent().toFixed(1)}%</span>
+        </div>
+        <div class="vesting-bar">
+          <div class="vesting-fill" style="width: {vestingPercent()}%"></div>
+        </div>
+        <div class="vesting-detail mono">
+          {formatAmount(vestingProgress.lockedVested, RWT_DECIMALS)} /
+          {formatAmount(vestingProgress.maxTotalClaim, RWT_DECIMALS)} RWT vested ·
+          claimed {formatAmount(vestingProgress.totalClaimed, RWT_DECIMALS)} RWT
+        </div>
+      </div>
+    {/if}
+
+    {#if proofForClaim}
+      <div class="claim-pre">
+        <div class="kpis">
+          <div class="kpi">
+            <span class="kpi-label">Cumulative</span>
+            <span class="kpi-value mono">{formatAmount(BigInt(proofForClaim.cumulativeAmount), RWT_DECIMALS)} RWT</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Already claimed</span>
+            <span class="kpi-value mono">{formatAmount(alreadyClaimedAmount, RWT_DECIMALS)} RWT</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Claimable now</span>
+            <span class="kpi-value mono">{formatAmount(claimableNow(), RWT_DECIMALS)} RWT</span>
+          </div>
+        </div>
+        {#if claimableNow() === 0n}
+          <div class="alert alert-warning">
+            <AlertTriangle size={14} />
+            Nothing to claim — already-claimed cumulative ≥ proof cumulative.
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    {#if claimResolveError}
+      <div class="alert alert-error">
+        <strong>Pre-flight error:</strong> {claimResolveError}
+      </div>
+    {/if}
+  </div>
 </ManualTriggerModal>
 
 <style>
@@ -458,12 +918,6 @@
     text-align: center;
   }
 
-  .claim-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
   .muted-note { color: var(--color-text-muted); font-size: var(--text-sm); }
 
   .alert {
@@ -494,12 +948,91 @@
   .form-row { display: flex; flex-direction: column; gap: 4px; }
   .form-row label { font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
-  .modal-stub {
-    color: var(--color-text-secondary);
-    font-size: var(--text-sm);
-    line-height: 1.5;
-    margin: 0;
+  .btn-quick {
+    background: var(--color-bg);
+    color: var(--color-primary);
+    border: 1px solid var(--color-border);
+    font-size: var(--text-xs);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    margin-left: auto;
   }
+  .btn-quick:hover:not(:disabled) {
+    background: var(--color-primary-muted);
+    border-color: var(--color-primary);
+  }
+
+  .claim-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--space-2);
+  }
+  .kpi {
+    background: var(--color-bg);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .kpi-label {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .kpi-value {
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    font-weight: 500;
+  }
+
+  .vesting-card {
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .vesting-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .vesting-label {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .vesting-pct {
+    font-size: var(--text-md);
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .vesting-bar {
+    height: 6px;
+    background: var(--color-border);
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+  }
+  .vesting-fill {
+    height: 100%;
+    background: var(--color-primary);
+    transition: width 0.3s ease;
+  }
+  .vesting-detail {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+
+  .claim-pre { display: flex; flex-direction: column; gap: var(--space-2); }
 
   .btn {
     display: inline-flex;
