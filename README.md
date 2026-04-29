@@ -60,6 +60,50 @@ server {
 }
 ```
 
+## Layer 10 status (2026-04-29)
+
+The dashboard ships frozen for Layer 10 — alongside the Layer 9 Nexus surfaces it
+already exposed, the System Overview surface (Substep 9) and the master E2E
+artifact viewer landed.
+
+## System Overview (Layer 10 Substep 9)
+
+The `/` route renders 8 sections in a single read-only operator dashboard:
+
+1. **SystemHealth** — overall validator + RPC + bot fleet status (embeds the
+   per-bot heartbeats from `BotHeartbeats`).
+2. **AuthorityChain** — POSITIVE + NEGATIVE deployer-zero-authority audit
+   verdicts per contract (OT, Futarchy, RWT, DEX, YD).
+3. **TokenMetrics** — RWT / ARL OT / per-OT supply, NAV, treasury balance.
+4. **RevenueFlowOverview** — distribute → convert → publish → claim pipeline
+   throughput and last-success timestamps.
+5. **DexPoolsOverview** — pool list, reserves, last shift_bins, last
+   compound_yield.
+6. **NexusOverview** — Nexus principal floor, manager pubkey, kill-switch
+   indicator, last action.
+7. **RecentEvents** — 2 s tick of program logs across the 5 contracts.
+8. **Alerts** — staleness alerts (bot below `BOT_STALE_THRESHOLD_MS`,
+   crank wallet below `LOW_SOL_THRESHOLD_LAMPORTS`).
+
+Cards refresh on a 1 s tick (`PUBLIC_DASHBOARD_CARD_INTERVAL_MS`); the events
+ticker refreshes at 2 s.
+
+A master E2E artifact viewer lives at `/dev/master`. The static SPA cannot
+spawn `tsx`, so the viewer is a paste-or-upload of `e2e-runner-*.json` files
+from the `data/` directory of a deploy host. Operators copy the artifact into
+the textarea or upload it; the viewer renders the same shape the runner
+emits server-side.
+
+### New env vars
+
+| Variable | Purpose |
+|---|---|
+| `PUBLIC_DASHBOARD_BOT_STALE_THRESHOLD_MS` | Time-without-heartbeat before a bot row marks `stale` |
+| `PUBLIC_DASHBOARD_LOW_SOL_THRESHOLD_LAMPORTS` | Crank wallet balance threshold for the Alerts card |
+| `PUBLIC_DASHBOARD_CARD_INTERVAL_MS` | Card-tick cadence (default 1000) |
+
+See `.env.example` for the full default set.
+
 ## Release checklist (Layer 9)
 
 Before tagging a Layer 9 dashboard release, confirm the following env-driven
@@ -83,38 +127,6 @@ rebuild + redeploy.
 > deployed master-pool address explicitly. CI release pipelines should
 > assert `process.env.NETWORK !== 'mainnet' || PUBLIC_USDC_MINT !== <devnet>`
 > before publishing.
-
-### IDL regeneration (R57 — Layer 10 critical path)
-
-`src/lib/idl/native-dex.json` currently lacks the 9 Layer 9 Nexus
-instructions (`initialize_nexus`, `update_nexus_manager`, `nexus_swap`,
-`nexus_add_liquidity`, `nexus_remove_liquidity`, `nexus_deposit`,
-`nexus_record_deposit`, `nexus_withdraw_profits`, `nexus_claim_rewards`)
-plus `claim_lp_fees`. The bootstrap reads this IDL via arlex-client; until
-it is regenerated, the bootstrap's `phaseNexus` records the missing ix in
-`init_skipped[]` and Substep 13 E2E for Nexus paths is gated.
-
-Regen procedure:
-
-```bash
-# In the contracts/ submodule:
-cd contracts
-cargo build-sbf
-
-# Use the Arlex IDL extractor (or anchor idl parse equivalent) to dump the
-# updated native-dex IDL JSON and replace the dashboard copy:
-arlex idl extract \
-  --program native-dex \
-  --output ../dashboard/src/lib/idl/native-dex.json
-```
-
-After regen:
-
-1. `npm run build` in `dashboard/`.
-2. Re-run `scripts/e2e-bootstrap.sh` and verify `init_skipped[]` no longer
-   contains `DEX::initialize_nexus`.
-3. Remove the `ixExists` precondition skip in `scripts/lib/bootstrap-init.ts`
-   `phaseNexus` (R57 closure step 3).
 
 ## Dependencies
 
