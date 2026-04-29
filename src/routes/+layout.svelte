@@ -35,6 +35,7 @@
     { label: 'Dev Hub', href: '/dev', icon: Terminal, enabled: true, description: 'Keypairs & status' },
     { label: 'Deploy', href: '/dev/deploy', icon: Upload, enabled: true, description: 'Program deploy' },
     { label: 'E2E Tests', href: '/dev/e2e', icon: PlayCircle, enabled: true, description: 'Test runner' },
+    { label: 'Master E2E', href: '/dev/master', icon: PlayCircle, enabled: true, description: 'Run All / 6 scenarios' },
   ];
 
   function isActive(href: string): boolean {

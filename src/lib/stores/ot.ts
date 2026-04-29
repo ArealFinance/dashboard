@@ -68,40 +68,50 @@ function createOtListStore() {
     error: string | null;
   }>({ items: [], loading: false, error: null });
 
+  // Single-flight guard (T-57) — prevents stacking GPA scans when the
+  // master tick fires while a slow RPC roundtrip is still in flight.
+  let pendingRefresh: Promise<void> | null = null;
+
+  async function doRefresh() {
+    update(s => ({ ...s, loading: true, error: null }));
+    try {
+      const client = get(arlexClient);
+      const accounts = await client.fetchAll('OtConfig');
+
+      const items: OtListItem[] = accounts.map(({ address, data }) => {
+        const mintBytes = data.ot_mint instanceof Uint8Array
+          ? data.ot_mint
+          : new Uint8Array(data.ot_mint);
+        const nameBytes = data.name instanceof Uint8Array
+          ? data.name
+          : new Uint8Array(data.name);
+        const symbolBytes = data.symbol instanceof Uint8Array
+          ? data.symbol
+          : new Uint8Array(data.symbol);
+
+        return {
+          address,
+          mint: new PublicKey(mintBytes).toBase58(),
+          name: trimNull(nameBytes),
+          symbol: trimNull(symbolBytes),
+          decimals: data.decimals,
+          totalMinted: BigInt(data.total_minted.toString())
+        };
+      });
+
+      set({ items, loading: false, error: null });
+    } catch (err: any) {
+      update(s => ({ ...s, loading: false, error: err.message }));
+    }
+  }
+
   return {
     subscribe,
 
     async refresh() {
-      update(s => ({ ...s, loading: true, error: null }));
-      try {
-        const client = get(arlexClient);
-        const accounts = await client.fetchAll('OtConfig');
-
-        const items: OtListItem[] = accounts.map(({ address, data }) => {
-          const mintBytes = data.ot_mint instanceof Uint8Array
-            ? data.ot_mint
-            : new Uint8Array(data.ot_mint);
-          const nameBytes = data.name instanceof Uint8Array
-            ? data.name
-            : new Uint8Array(data.name);
-          const symbolBytes = data.symbol instanceof Uint8Array
-            ? data.symbol
-            : new Uint8Array(data.symbol);
-
-          return {
-            address,
-            mint: new PublicKey(mintBytes).toBase58(),
-            name: trimNull(nameBytes),
-            symbol: trimNull(symbolBytes),
-            decimals: data.decimals,
-            totalMinted: BigInt(data.total_minted.toString())
-          };
-        });
-
-        set({ items, loading: false, error: null });
-      } catch (err: any) {
-        update(s => ({ ...s, loading: false, error: err.message }));
-      }
+      if (pendingRefresh) return pendingRefresh;
+      pendingRefresh = doRefresh().finally(() => { pendingRefresh = null; });
+      return pendingRefresh;
     }
   };
 }

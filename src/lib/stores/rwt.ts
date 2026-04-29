@@ -110,32 +110,42 @@ function createRwtStore() {
 
   const { subscribe, set, update } = writable<RwtState>(initial);
 
+  // Single-flight guard (T-57) — prevents stacking work when the master
+  // 5s tick fires while a slow RPC roundtrip is still in flight.
+  let pendingRefresh: Promise<void> | null = null;
+
+  async function doRefresh() {
+    update(s => ({ ...s, loading: true, error: null }));
+    try {
+      const client = get(rwtClient);
+      const [vaultPda] = findRwtVaultPda(PROGRAM_ID);
+      const [distConfigPda] = findRwtDistConfigPda(PROGRAM_ID);
+
+      const [vaultData, distData] = await Promise.all([
+        client.fetch('RwtVault', vaultPda).catch(() => null),
+        client.fetch('RwtDistributionConfig', distConfigPda).catch(() => null)
+      ]);
+
+      set({
+        vault: vaultData ? parseVault(vaultData) : null,
+        distConfig: distData ? parseDistConfig(distData) : null,
+        vaultPda,
+        distConfigPda,
+        loading: false,
+        error: null
+      });
+    } catch (err: any) {
+      update(s => ({ ...s, loading: false, error: err.message }));
+    }
+  }
+
   return {
     subscribe,
 
     async refresh() {
-      update(s => ({ ...s, loading: true, error: null }));
-      try {
-        const client = get(rwtClient);
-        const [vaultPda] = findRwtVaultPda(PROGRAM_ID);
-        const [distConfigPda] = findRwtDistConfigPda(PROGRAM_ID);
-
-        const [vaultData, distData] = await Promise.all([
-          client.fetch('RwtVault', vaultPda).catch(() => null),
-          client.fetch('RwtDistributionConfig', distConfigPda).catch(() => null)
-        ]);
-
-        set({
-          vault: vaultData ? parseVault(vaultData) : null,
-          distConfig: distData ? parseDistConfig(distData) : null,
-          vaultPda,
-          distConfigPda,
-          loading: false,
-          error: null
-        });
-      } catch (err: any) {
-        update(s => ({ ...s, loading: false, error: err.message }));
-      }
+      if (pendingRefresh) return pendingRefresh;
+      pendingRefresh = doRefresh().finally(() => { pendingRefresh = null; });
+      return pendingRefresh;
     },
 
     reset() {

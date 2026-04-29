@@ -77,35 +77,45 @@ function createFutarchyListStore() {
     error: string | null;
   }>({ items: [], loading: false, error: null });
 
+  // Single-flight guard (T-57) — prevents stacking GPA scans when the
+  // master tick fires while a slow RPC roundtrip is still in flight.
+  let pendingRefresh: Promise<void> | null = null;
+
+  async function doRefresh() {
+    update(s => ({ ...s, loading: true, error: null }));
+    try {
+      const client = get(futarchyClient);
+      const accounts = await client.fetchAll('FutarchyConfig');
+
+      const items: FutarchyListItem[] = accounts.map(({ address, data }) => {
+        const mintBytes = data.ot_mint instanceof Uint8Array
+          ? data.ot_mint : new Uint8Array(data.ot_mint);
+        const authBytes = data.authority instanceof Uint8Array
+          ? data.authority : new Uint8Array(data.authority);
+
+        return {
+          address,
+          otMint: new PublicKey(mintBytes).toBase58(),
+          authority: new PublicKey(authBytes).toBase58(),
+          nextProposalId: BigInt(data.next_proposal_id.toString()),
+          isActive: data.is_active,
+          hasPending: data.has_pending
+        };
+      });
+
+      set({ items, loading: false, error: null });
+    } catch (err: any) {
+      update(s => ({ ...s, loading: false, error: err.message }));
+    }
+  }
+
   return {
     subscribe,
 
     async refresh() {
-      update(s => ({ ...s, loading: true, error: null }));
-      try {
-        const client = get(futarchyClient);
-        const accounts = await client.fetchAll('FutarchyConfig');
-
-        const items: FutarchyListItem[] = accounts.map(({ address, data }) => {
-          const mintBytes = data.ot_mint instanceof Uint8Array
-            ? data.ot_mint : new Uint8Array(data.ot_mint);
-          const authBytes = data.authority instanceof Uint8Array
-            ? data.authority : new Uint8Array(data.authority);
-
-          return {
-            address,
-            otMint: new PublicKey(mintBytes).toBase58(),
-            authority: new PublicKey(authBytes).toBase58(),
-            nextProposalId: BigInt(data.next_proposal_id.toString()),
-            isActive: data.is_active,
-            hasPending: data.has_pending
-          };
-        });
-
-        set({ items, loading: false, error: null });
-      } catch (err: any) {
-        update(s => ({ ...s, loading: false, error: err.message }));
-      }
+      if (pendingRefresh) return pendingRefresh;
+      pendingRefresh = doRefresh().finally(() => { pendingRefresh = null; });
+      return pendingRefresh;
     }
   };
 }

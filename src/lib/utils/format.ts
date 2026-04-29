@@ -165,6 +165,52 @@ function resolveLocalnetRpcUrl(): string {
 }
 
 /**
+ * Strip credentials and query strings from an RPC URL for display.
+ *
+ * Helius / Triton / QuickNode endpoints embed an `?api-key=…` token (or
+ * `/<api-key>` path segment) which is sensitive — operators should never
+ * see another operator's key just because they pasted a CLI report into
+ * the dev/master page. This helper:
+ *
+ *   1. Drops the URL query string (kills `?api-key=…` and friends).
+ *   2. Drops any path segment that looks like an opaque token (>= 20
+ *      chars, alphanumeric + `-_`) — Helius `/<key>`, Alchemy keys, etc.
+ *   3. Returns just `<protocol>//<host>` when nothing useful remains.
+ *
+ * Falsy / non-URL inputs pass through unchanged so callers can pipe raw
+ * placeholders ('—', empty string) without special-casing.
+ */
+export function redactRpcUrl(input: string | null | undefined): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    // Not a valid absolute URL — strip anything that looks like a query
+    // string and return the prefix verbatim.
+    const qIdx = trimmed.indexOf('?');
+    return qIdx >= 0 ? trimmed.slice(0, qIdx) : trimmed;
+  }
+  // Drop credentials, query, and fragment.
+  parsed.username = '';
+  parsed.password = '';
+  parsed.search = '';
+  parsed.hash = '';
+  // Strip opaque-token-looking path segments (>= 20 chars, alnum + `-_`).
+  const segments = parsed.pathname.split('/').filter((s) => {
+    if (s.length === 0) return false;
+    if (s.length >= 20 && /^[A-Za-z0-9_-]+$/.test(s)) return false;
+    return true;
+  });
+  parsed.pathname = segments.length > 0 ? '/' + segments.join('/') : '/';
+  // Avoid a trailing `/` when only origin remains.
+  const out = parsed.toString();
+  return parsed.pathname === '/' ? out.replace(/\/$/, '') : out;
+}
+
+/**
  * Get the explorer URL for a transaction or address
  */
 export function explorerUrl(

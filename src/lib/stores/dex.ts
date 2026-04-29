@@ -201,33 +201,46 @@ function createDexStore() {
 
   const { subscribe, set, update } = writable<DexState>(initial);
 
+  // Single-flight guard (T-57) — prevents stacking work when the master
+  // tick fires while a slow RPC roundtrip is still in flight.
+  let pendingRefresh: Promise<void> | null = null;
+
+  async function doRefresh() {
+    update(s => ({ ...s, loading: true, error: null }));
+    try {
+      const client = get(dexClient);
+      const [configPda] = findDexConfigPda(PROGRAM_ID);
+      const [creatorsPda] = findPoolCreatorsPda(PROGRAM_ID);
+
+      const [configData, creatorsData] = await Promise.all([
+        client.fetch('DexConfig', configPda).catch(() => null),
+        client.fetch('PoolCreators', creatorsPda).catch(() => null),
+      ]);
+
+      // T-58: pools[] is populated by refreshPool() (per-pool ondemand).
+      // The master refresh must NOT wipe that cache — preserve via update.
+      update(s => ({
+        ...s,
+        config: configData ? parseConfig(configData) : null,
+        creators: creatorsData ? parseCreators(creatorsData) : null,
+        pools: s.pools, // preserve existing pools loaded via refreshPool
+        configPda,
+        creatorsPda,
+        loading: false,
+        error: null,
+      }));
+    } catch (err: any) {
+      update(s => ({ ...s, loading: false, error: err.message }));
+    }
+  }
+
   return {
     subscribe,
 
     async refresh() {
-      update(s => ({ ...s, loading: true, error: null }));
-      try {
-        const client = get(dexClient);
-        const [configPda] = findDexConfigPda(PROGRAM_ID);
-        const [creatorsPda] = findPoolCreatorsPda(PROGRAM_ID);
-
-        const [configData, creatorsData] = await Promise.all([
-          client.fetch('DexConfig', configPda).catch(() => null),
-          client.fetch('PoolCreators', creatorsPda).catch(() => null),
-        ]);
-
-        set({
-          config: configData ? parseConfig(configData) : null,
-          creators: creatorsData ? parseCreators(creatorsData) : null,
-          pools: [], // pools loaded separately via refreshPool
-          configPda,
-          creatorsPda,
-          loading: false,
-          error: null,
-        });
-      } catch (err: any) {
-        update(s => ({ ...s, loading: false, error: err.message }));
-      }
+      if (pendingRefresh) return pendingRefresh;
+      pendingRefresh = doRefresh().finally(() => { pendingRefresh = null; });
+      return pendingRefresh;
     },
 
     async refreshPool(tokenAMint: PublicKey, tokenBMint: PublicKey) {

@@ -1,162 +1,173 @@
 <script lang="ts">
-  import { Coins, Vote, CircleDollarSign, ArrowLeftRight, GitBranch, Bot, Check, Clock } from 'lucide-svelte';
+  /*
+   * System Overview — Layer 10 Substep 9 root page (per Q3 / D14).
+   *
+   * Composes the 8 mandated sections:
+   *   1. System Health  — contracts deployed + bot heartbeats + CPI graph
+   *   2. Authority Chain
+   *   3. Token Metrics
+   *   4. Revenue Flow
+   *   5. DEX Pools
+   *   6. Nexus
+   *   7. Recent Events  — consolidated cross-contract feed (event-stream
+   *                       aggregated, 2s tick — D34 / R-F)
+   *   8. Alerts          — derived from heartbeats + feed staleness
+   *
+   * Data flow:
+   *   - Cards subscribe to existing per-contract typed stores (rwtStore,
+   *     dexStore, otList, ydStore, futarchyList, nexusStore, etc.).
+   *   - 1s master tick driver fans out per-card refresh (D34 — reuses
+   *     /nexus/ pattern).
+   *   - 2s consolidated-events ticker via systemOverview store (D34).
+   *   - Stale markers + alerts derived client-side.
+   */
+  import { onMount, onDestroy } from 'svelte';
+  import { RefreshCw, Network, Coins, ShieldCheck, GitBranch, ArrowLeftRight, Bot, Activity, AlertTriangle } from 'lucide-svelte';
   import { network } from '$lib/stores/network';
-  import { protocolRegistry } from '$lib/stores/protocol';
-  import CpiGraph from '$lib/components/CpiGraph.svelte';
+  import { systemOverview } from '$lib/stores/systemOverview';
 
-  $: programs = $protocolRegistry.programs;
-  $: readyCount = $protocolRegistry.deployedCount;
-  $: totalInstructions = $protocolRegistry.totalInstructions;
-  $: totalLinks = $protocolRegistry.links.length;
-  $: activeLinks = $protocolRegistry.links.filter(l => l.status === 'active').length;
+  import SystemHealth from '$lib/components/SystemHealth.svelte';
+  import BotHeartbeats from '$lib/components/BotHeartbeats.svelte';
+  import AuthorityChain from '$lib/components/AuthorityChain.svelte';
+  import TokenMetrics from '$lib/components/TokenMetrics.svelte';
+  import RevenueFlowOverview from '$lib/components/RevenueFlowOverview.svelte';
+  import DexPoolsOverview from '$lib/components/DexPoolsOverview.svelte';
+  import NexusOverview from '$lib/components/NexusOverview.svelte';
+  import RecentEvents from '$lib/components/RecentEvents.svelte';
+  import Alerts from '$lib/components/Alerts.svelte';
 
-  // Icon map for each program
-  const iconMap: Record<string, any> = {
-    'ot': Coins,
-    'futarchy': Vote,
-    'rwt': CircleDollarSign,
-    'dex': ArrowLeftRight,
-    'yd': GitBranch
-  };
+  let refreshing = false;
 
-  // Href map for each program
-  const hrefMap: Record<string, string> = {
-    'ot': '/ot',
-    'futarchy': '/futarchy',
-    'rwt': '/rwt',
-    'dex': '/dex',
-    'yd': '/yd'
-  };
+  async function manualRefresh() {
+    refreshing = true;
+    try {
+      await systemOverview.refresh();
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  onMount(() => {
+    // Card cadence resolved from PUBLIC_DASHBOARD_CARD_INTERVAL_MS
+    // (default 5s, T-59/T-60). Events ticker stays at 2s (Recent Events
+    // is the cheap signature-walk path, not the GPA-fan-out path).
+    systemOverview.start(undefined, 2_000);
+  });
+
+  onDestroy(() => {
+    systemOverview.stop();
+  });
 </script>
 
 <div class="overview">
-  <div class="hero">
-    <h1>Areal Finance Protocol</h1>
-    <p class="subtitle">5 on-chain contracts + 6 off-chain bots | {$network} network</p>
-  </div>
-
-  <div class="stats-row">
-    <div class="stat-card">
-      <span class="stat-value">{readyCount}/{programs.length}</span>
-      <span class="stat-label">Modules deployed</span>
+  <header class="hero">
+    <div>
+      <h1>Areal Finance Protocol</h1>
+      <p class="subtitle">
+        System Overview · 5 contracts + 6 bots · {$network}
+      </p>
     </div>
-    <div class="stat-card">
-      <span class="stat-value">{totalInstructions}</span>
-      <span class="stat-label">Total instructions</span>
-    </div>
-    <div class="stat-card">
-      <span class="stat-value">{activeLinks}/{totalLinks}</span>
-      <span class="stat-label">CPI links active</span>
-    </div>
-  </div>
+    <button class="refresh-btn" on:click={manualRefresh} disabled={refreshing} aria-label="Refresh">
+      <RefreshCw size={14} class={refreshing ? 'spin' : ''} />
+      <span>Refresh</span>
+    </button>
+  </header>
 
-  <!-- CPI Graph -->
-  <section class="section-card">
-    <h2 class="section-title">Protocol Architecture</h2>
-    <p class="section-desc">Cross-Program Invocation graph showing contract relationships</p>
-    <CpiGraph />
-  </section>
-
-  <!-- Quick Links -->
-  <section class="quick-links">
-    <h2 class="section-title">Quick Access</h2>
-    <div class="links-row">
-      <a href="/ot" class="quick-link">
-        <Coins size={16} />
-        <span>Manage OT Projects</span>
-      </a>
+  <!-- 1. System Health -->
+  <section class="overview-section section-system-health" id="system-health">
+    <div class="section-head">
+      <Network size={16} />
+      <h2 class="section-title">System Health</h2>
+    </div>
+    <SystemHealth />
+    <div class="bots-block">
+      <h3 class="subsection-title">Bot heartbeats</h3>
+      <BotHeartbeats />
     </div>
   </section>
 
-  <h2 class="section-title">Protocol Modules</h2>
-
-  <div class="modules-grid">
-    {#each programs as mod}
-      {@const icon = iconMap[mod.id]}
-      {@const href = hrefMap[mod.id]}
-      <div class="module-card" class:ready={mod.status === 'deployed'} class:disabled={mod.status === 'pending'}>
-        {#if mod.status === 'deployed'}
-          <a href={href} class="module-link">
-            <div class="module-header">
-              <div class="module-icon">
-                <svelte:component this={icon} size={20} />
-              </div>
-              <div class="module-meta">
-                <span class="module-name">{mod.name}</span>
-                <span class="module-layer">Layer {mod.layer}</span>
-              </div>
-              <div class="module-status status-ready">
-                <Check size={12} />
-                Ready
-              </div>
-            </div>
-            <p class="module-desc">{mod.description}</p>
-            <div class="module-footer">
-              <span class="module-stat">{mod.instructions} instructions</span>
-              {#if mod.programId}
-                <span class="module-stat">ID: {mod.programId.slice(0, 8)}...</span>
-              {/if}
-            </div>
-          </a>
-        {:else}
-          <div class="module-link">
-            <div class="module-header">
-              <div class="module-icon">
-                <svelte:component this={icon} size={20} />
-              </div>
-              <div class="module-meta">
-                <span class="module-name">{mod.name}</span>
-                <span class="module-layer">Layer {mod.layer}</span>
-              </div>
-              <div class="module-status status-pending">
-                <Clock size={12} />
-                Pending
-              </div>
-            </div>
-            <p class="module-desc">{mod.description}</p>
-            <div class="module-footer">
-              <span class="module-stat">{mod.instructions} instructions</span>
-            </div>
-          </div>
-        {/if}
-      </div>
-    {/each}
-
-    <!-- Off-chain Bots (not in protocol registry — separate category) -->
-    <div class="module-card disabled">
-      <div class="module-link">
-        <div class="module-header">
-          <div class="module-icon">
-            <Bot size={20} />
-          </div>
-          <div class="module-meta">
-            <span class="module-name">Off-chain Bots</span>
-            <span class="module-layer">Layer 5, 7-9</span>
-          </div>
-          <div class="module-status status-pending">
-            <Clock size={12} />
-            2/6 ready
-          </div>
-        </div>
-        <p class="module-desc">Merkle publisher + pool rebalancer active; cranks and nexus pending</p>
-        <div class="module-footer">
-          <span class="module-stat">2/6 services</span>
-        </div>
-      </div>
+  <!-- 2. Authority Chain -->
+  <section class="overview-section section-authority-chain" id="authority-chain">
+    <div class="section-head">
+      <ShieldCheck size={16} />
+      <h2 class="section-title">Authority Chain</h2>
     </div>
-  </div>
+    <AuthorityChain />
+  </section>
+
+  <!-- 3. Token Metrics -->
+  <section class="overview-section section-token-metrics" id="token-metrics">
+    <div class="section-head">
+      <Coins size={16} />
+      <h2 class="section-title">Token Metrics</h2>
+    </div>
+    <TokenMetrics />
+  </section>
+
+  <!-- 4. Revenue Flow -->
+  <section class="overview-section section-revenue-flow" id="revenue-flow">
+    <div class="section-head">
+      <GitBranch size={16} />
+      <h2 class="section-title">Revenue Flow</h2>
+    </div>
+    <RevenueFlowOverview />
+  </section>
+
+  <!-- 5. DEX Pools -->
+  <section class="overview-section section-dex-pools" id="dex-pools">
+    <div class="section-head">
+      <ArrowLeftRight size={16} />
+      <h2 class="section-title">DEX Pools</h2>
+    </div>
+    <DexPoolsOverview />
+  </section>
+
+  <!-- 6. Nexus -->
+  <section class="overview-section section-nexus" id="nexus">
+    <div class="section-head">
+      <Bot size={16} />
+      <h2 class="section-title">Nexus</h2>
+    </div>
+    <NexusOverview />
+  </section>
+
+  <!-- 7. Recent Events -->
+  <section class="overview-section section-recent-events" id="recent-events">
+    <div class="section-head">
+      <Activity size={16} />
+      <h2 class="section-title">Recent Events</h2>
+    </div>
+    <RecentEvents />
+  </section>
+
+  <!-- 8. Alerts -->
+  <section class="overview-section section-alerts" id="alerts">
+    <div class="section-head">
+      <AlertTriangle size={16} />
+      <h2 class="section-title">Alerts</h2>
+    </div>
+    <Alerts />
+  </section>
 </div>
 
 <style>
   .overview {
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
+    gap: var(--space-5);
+  }
+
+  .hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
   }
 
   .hero h1 {
-    font-size: var(--text-3xl);
+    font-size: var(--text-2xl);
     font-weight: 700;
+    margin: 0;
   }
 
   .subtitle {
@@ -166,190 +177,78 @@
     font-size: var(--text-sm);
   }
 
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-4);
+  .refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    cursor: pointer;
   }
 
-  .stat-card {
+  .refresh-btn:hover:not(:disabled) {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+
+  .refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .overview-section {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-5);
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-3);
   }
 
-  .stat-value {
-    font-size: var(--text-2xl);
-    font-weight: 700;
-    font-family: var(--font-mono);
-  }
-
-  .stat-label {
-    font-size: var(--text-sm);
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     color: var(--color-text-secondary);
   }
 
   .section-title {
     font-size: var(--text-lg);
     font-weight: 600;
+    margin: 0;
   }
 
-  .section-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-5);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .section-desc {
+  .subsection-title {
     font-size: var(--text-sm);
-    color: var(--color-text-muted);
-  }
-
-  /* Quick links */
-  .quick-links {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .links-row {
-    display: flex;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
-
-  .quick-link {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    background: var(--color-primary-muted);
-    color: var(--color-primary);
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    text-decoration: none;
-    transition: all var(--transition-fast);
-  }
-
-  .quick-link:hover {
-    background: var(--color-primary);
-    color: white;
-    text-decoration: none;
-  }
-
-  .modules-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-4);
-  }
-
-  .module-card {
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-    transition: all var(--transition-fast);
-    overflow: hidden;
-  }
-
-  .module-card.ready:hover {
-    border-color: var(--color-primary);
-    box-shadow: var(--shadow-card);
-  }
-
-  .module-card.disabled {
-    opacity: 0.5;
-  }
-
-  .module-link {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-5);
-    text-decoration: none;
-    color: inherit;
-  }
-
-  .module-link:hover {
-    text-decoration: none;
-  }
-
-  .module-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .module-icon {
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-md);
-    background: var(--color-primary-muted);
-    color: var(--color-primary);
-  }
-
-  .module-meta {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .module-name {
     font-weight: 600;
-    font-size: var(--text-base);
-  }
-
-  .module-layer {
-    font-size: var(--text-xs);
-    color: var(--color-text-muted);
-    font-family: var(--font-mono);
-  }
-
-  .module-status {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-  }
-
-  .status-ready {
-    color: var(--color-success);
-    background: var(--color-success-muted);
-  }
-
-  .status-pending {
-    color: var(--color-text-muted);
-    background: var(--color-surface-hover);
-  }
-
-  .module-desc {
-    font-size: var(--text-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     color: var(--color-text-secondary);
-    line-height: 1.5;
+    margin: 0;
   }
 
-  .module-footer {
+  .bots-block {
     display: flex;
-    gap: var(--space-3);
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
   }
 
-  .module-stat {
-    font-size: var(--text-xs);
-    color: var(--color-text-muted);
-    font-family: var(--font-mono);
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>
