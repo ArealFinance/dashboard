@@ -9,10 +9,9 @@ import {
   findRevenueAccountPda,
   findRevenueConfigPda,
   findOtGovernancePda,
-  findOtTreasuryPda,
-  findAta,
-  USDC_MINTS
-} from '$lib/utils/pda';
+  findOtTreasuryPda
+} from '@areal/sdk/pda';
+import { findAta, USDC_MINTS } from '$lib/utils/pda';
 import type { Cluster } from './network';
 
 // Program ID — will be updated after deployment

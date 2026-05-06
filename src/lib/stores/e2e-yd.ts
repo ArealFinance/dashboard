@@ -74,7 +74,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
   'yd-load-rwt': async (ctx: YdBasicCtx, deployer: Keypair) => {
     const conn = get(connection);
     const { rwtProgramId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const [vaultPda] = findRwtVaultPda(rwtProgramId);
     const info = await conn.getAccountInfo(vaultPda);
     if (!info) throw new Error('RWT Vault not found — deploy RWT Engine first (run rwt-lifecycle)');
@@ -107,7 +107,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     ctx.unclaimedDest = ata;
     // Fund deployer with RWT (admin_mint via RWT Engine).
     const { rwtClient: rwtClientStore, rwtProgramId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const client = get(rwtClientStore);
     const [vaultPda] = findRwtVaultPda(rwtProgramId);
     const tx = client.buildTransaction('admin_mint_rwt', {
@@ -126,7 +126,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     if (!ctx.feeAta) throw new Error('feeAta missing');
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda } = await import('@areal/sdk/pda');
     const client = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
     ctx.configPda = configPda;
@@ -158,7 +158,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     if (!ctx.otMint || !ctx.rwtMint || !ctx.usdcMint || !ctx.configPda) throw new Error('Previous steps incomplete');
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const client = get(ydClient);
     const [distributorPda] = findMerkleDistributorPda(ydProgramId, ctx.otMint);
     const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, ctx.otMint);
@@ -273,7 +273,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
@@ -318,7 +318,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
@@ -376,7 +376,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     // Negative: claim must now fail.
     let claimRejected = false;
     try {
-      const { findClaimStatusPda } = await import('$lib/utils/pda');
+      const { findClaimStatusPda } = await import('@areal/sdk/pda');
       const { ydProgramId } = await import('./yd');
       const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
       const tx2 = client.buildTransaction('claim', {
@@ -461,7 +461,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
   'ydf-setup': async (ctx: YdFairnessCtx, deployer: Keypair) => {
     const conn = get(connection);
     const { rwtProgramId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const [vaultPda] = findRwtVaultPda(rwtProgramId);
     const info = await conn.getAccountInfo(vaultPda);
     if (!info) throw new Error('RWT Vault not found — run rwt-lifecycle first');
@@ -518,7 +518,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
   'ydf-init': async (ctx: YdFairnessCtx, deployer: Keypair) => {
     if (!ctx.otMint || !ctx.rwtMint || !ctx.usdcMint || !ctx.aliceRwtAta) throw new Error('Setup incomplete');
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
@@ -731,7 +731,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
 

@@ -61,7 +61,7 @@ export function createYdSaturatingSteps(): E2EStep[] {
 
 async function loadRwtAndUsdc(conn: any) {
   const { rwtProgramId } = await import('./rwt');
-  const { findRwtVaultPda } = await import('$lib/utils/pda');
+  const { findRwtVaultPda } = await import('@areal/sdk/pda');
   const [vaultPda] = findRwtVaultPda(rwtProgramId);
   const info = await conn.getAccountInfo(vaultPda);
   if (!info) throw new Error('RWT Vault not found — run rwt-lifecycle scenario first');
@@ -91,7 +91,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
 
     // Mint 2000 RWT via admin_mint_rwt.
     const { rwtClient: rwtClientStore, rwtProgramId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const client = get(rwtClientStore);
     const [vaultPda] = findRwtVaultPda(rwtProgramId);
     const tx = client.buildTransaction('admin_mint_rwt', {
@@ -108,7 +108,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
 
     // Init YD config (idempotent) and create distributor.
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const ydClientInstance = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
     const [distributorPda] = findMerkleDistributorPda(ydProgramId, mintAddress);
@@ -237,7 +237,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
     await new Promise(r => setTimeout(r, 2500));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
@@ -332,7 +332,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
       throw new Error('incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const { computeLeaf, buildMerkleTree } = await import('$lib/utils/merkle');
     const conn = get(connection);
     const client = get(ydClient);

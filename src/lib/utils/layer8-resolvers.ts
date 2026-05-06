@@ -31,7 +31,6 @@ import {
   type RwtDistributionConfigState,
 } from '$lib/api/layer8';
 import {
-  findAta,
   findClaimStatusPda,
   findLiquidityHoldingPda,
   findLiquidityNexusPda,
@@ -42,7 +41,8 @@ import {
   findRwtVaultPda,
   findYdAccumulatorPda,
   findYdConfigPda,
-} from '$lib/utils/pda';
+} from '@areal/sdk/pda';
+import { findAta } from '$lib/utils/pda';
 
 /**
  * Program-ID bundle the resolvers depend on. Caller passes program IDs from

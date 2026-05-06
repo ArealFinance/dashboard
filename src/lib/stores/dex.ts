@@ -3,7 +3,7 @@ import { PublicKey } from '@solana/web3.js';
 import { ArlexClient } from '@arlex/client';
 import { connection } from './network';
 import idl from '$lib/idl/native-dex.json';
-import { findDexConfigPda, findPoolCreatorsPda, findPoolStatePda, findLpPositionPda, findBinArrayPda } from '$lib/utils/pda';
+import { findDexConfigPda, findPoolCreatorsPda, findPoolStatePda, findLpPositionPda, findBinArrayPda } from '@areal/sdk/pda';
 
 // Program ID — will be updated after deployment
 const PROGRAM_ID = new PublicKey(idl.metadata?.address ?? '11111111111111111111111111111112');

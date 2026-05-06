@@ -31,12 +31,17 @@ export default defineConfig({
   resolve: isTest
     ? {
         conditions: ['browser', 'svelte'],
+        // Dedupe @solana/web3.js so the dashboard, @areal/sdk, and any
+        // transitively-installed copies all share one PublicKey identity.
+        // Without this, vi.spyOn(PublicKey, 'findProgramAddressSync') in
+        // dashboard tests does NOT intercept calls made inside the SDK.
+        dedupe: ['@solana/web3.js'],
         alias: {
           $lib: resolve('src/lib'),
           $app: resolve('src/__mocks__/sveltekit-app'),
         },
       }
-    : undefined,
+    : { dedupe: ['@solana/web3.js'] },
   // Deps that ship raw TypeScript that vite can't transpile cleanly under
   // jsdom (web3.js' `isOnCurve` uses `eval`-ish patterns in src). Force them
   // through the standard CJS bundle by listing in `ssr.noExternal` alone.

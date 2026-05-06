@@ -53,7 +53,7 @@ export function createYdPublishNegativesSteps(): E2EStep[] {
 
 async function loadRwtAndUsdc(conn: any) {
   const { rwtProgramId } = await import('./rwt');
-  const { findRwtVaultPda } = await import('$lib/utils/pda');
+  const { findRwtVaultPda } = await import('@areal/sdk/pda');
   const [vaultPda] = findRwtVaultPda(rwtProgramId);
   const info = await conn.getAccountInfo(vaultPda);
   if (!info) throw new Error('RWT Vault not found — run rwt-lifecycle first');
@@ -79,7 +79,7 @@ export const ydPublishNegativesExecutors: Record<string, StepExecutor> = {
     ctx.feeAta = ata;
 
     const { rwtClient: rwtClientStore, rwtProgramId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const rwt = get(rwtClientStore);
     const [vaultPda] = findRwtVaultPda(rwtProgramId);
     const mintTx = rwt.buildTransaction('admin_mint_rwt', {
@@ -92,7 +92,7 @@ export const ydPublishNegativesExecutors: Record<string, StepExecutor> = {
     await signAndSendTransaction(conn, mintTx, [deployer]);
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const yd = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
     const [distributorPda] = findMerkleDistributorPda(ydProgramId, mintAddress);
@@ -243,7 +243,7 @@ export const ydPublishNegativesExecutors: Record<string, StepExecutor> = {
     }
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const { computeLeaf } = await import('$lib/utils/merkle');
     const yd = get(ydClient);
 

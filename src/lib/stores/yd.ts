@@ -7,9 +7,9 @@ import {
   findYdConfigPda,
   findMerkleDistributorPda,
   findYdAccumulatorPda,
-  findClaimStatusPda,
-  findAta
-} from '$lib/utils/pda';
+  findClaimStatusPda
+} from '@areal/sdk/pda';
+import { findAta } from '$lib/utils/pda';
 
 // Program ID — sourced from IDL (generated from contract's declare_id!).
 // Fail fast if missing rather than silently using a placeholder (ADR: HIGH-1).
