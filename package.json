@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@arlex/client": "file:../vendor/arlex-client-0.1.0.tgz",
+    "@arlex/client": "file:../vendor/arlex-client-0.2.1.tgz",
     "@solana/web3.js": "^1.98.0",
     "bs58": "^6.0.0",
     "crypto-browserify": "^3.12.1",
