@@ -15,7 +15,10 @@ export default defineConfig({
     isTest ? svelte() : sveltekit(),
     nodePolyfills({
       include: ['buffer', 'crypto', 'stream', 'util', 'process'],
-      globals: { Buffer: true, global: true, process: true },
+      // Buffer: 'build' (not `true`) avoids the Inject pass at build time,
+      // which conflicts with @areal/sdk 0.1.2+ that imports Buffer explicitly
+      // (manualChunks vs external Rollup error on shims/buffer otherwise).
+      globals: { Buffer: 'build', global: true, process: true },
       overrides: { fs: 'empty' }
     })
   ],
@@ -35,13 +38,17 @@ export default defineConfig({
         // transitively-installed copies all share one PublicKey identity.
         // Without this, vi.spyOn(PublicKey, 'findProgramAddressSync') in
         // dashboard tests does NOT intercept calls made inside the SDK.
-        dedupe: ['@solana/web3.js'],
+        // Also dedupe `buffer` so the polyfill's Buffer class (used by SDK
+        // 0.1.2's explicit `import { Buffer } from 'buffer'`) is the same
+        // identity as the Buffer the test reaches for via the global — both
+        // come from node_modules/buffer, not Node's native Buffer class.
+        dedupe: ['@solana/web3.js', 'buffer'],
         alias: {
           $lib: resolve('src/lib'),
           $app: resolve('src/__mocks__/sveltekit-app'),
         },
       }
-    : { dedupe: ['@solana/web3.js'] },
+    : { dedupe: ['@solana/web3.js', 'buffer'] },
   // Deps that ship raw TypeScript that vite can't transpile cleanly under
   // jsdom (web3.js' `isOnCurve` uses `eval`-ish patterns in src). Force them
   // through the standard CJS bundle by listing in `ssr.noExternal` alone.
