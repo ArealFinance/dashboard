@@ -7,8 +7,8 @@
   import { wallet } from '$lib/stores/wallet';
   import { futarchyClient, futarchyProgramId, PROPOSAL_TYPES, PROPOSAL_STATUSES } from '$lib/stores/futarchy';
   import { programId as otProgramId } from '$lib/stores/ot';
-  import { findOtGovernancePda, findOtConfigPda, findOtTreasuryPda, findRevenueConfigPda, findAta,
-    TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { findOtGovernancePda, findOtConfigPda, findOtTreasuryPda, findRevenueConfigPda } from '@areal/sdk/pda';
+  import { findAta, TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '$lib/utils/pda';
   import { bytesToBase58, formatTimestamp, isZeroAddress, formatAddress } from '$lib/utils/format';
   import { sendWalletTransaction } from '$lib/utils/tx';
   import { connection } from '$lib/stores/network';

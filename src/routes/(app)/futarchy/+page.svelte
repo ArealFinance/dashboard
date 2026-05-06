@@ -3,7 +3,7 @@
   import { Vote, Plus, RefreshCw, Loader2, ExternalLink } from 'lucide-svelte';
   import { futarchyList, futarchyClient, futarchyProgramId } from '$lib/stores/futarchy';
   import { wallet } from '$lib/stores/wallet';
-  import { findFutarchyConfigPda, findOtGovernancePda } from '$lib/utils/pda';
+  import { findFutarchyConfigPda, findOtGovernancePda } from '@areal/sdk/pda';
   import { programId as otProgramId } from '$lib/stores/ot';
   import { isValidAddress } from '$lib/utils/format';
   import { signAndSendTransaction } from '$lib/utils/tx';

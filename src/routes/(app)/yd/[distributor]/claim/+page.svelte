@@ -82,7 +82,7 @@
       // Lazy imports
       const { parseProofJson } = await import('$lib/utils/merkle');
       const { ydClient, ydProgramId } = await import('$lib/stores/yd');
-      const { findYdConfigPda } = await import('$lib/utils/pda');
+      const { findYdConfigPda } = await import('@areal/sdk/pda');
 
       let proof: Uint8Array[] = [];
       if (proofJson.trim().length > 0) {

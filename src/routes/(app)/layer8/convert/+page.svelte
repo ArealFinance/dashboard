@@ -158,7 +158,7 @@
     // (resolveConvertAccounts will read it again; the small redundancy is
     // worth keeping the resolver pure / single-purpose.)
     const { readRwtVault } = await import('$lib/api/layer8');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const [rwtVaultPda] = findRwtVaultPda(rwtProgramId);
     const rwtVault = await readRwtVault(conn, rwtVaultPda);
     if (!rwtVault) {

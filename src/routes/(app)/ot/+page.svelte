@@ -12,7 +12,10 @@
   import { formatAmount, isValidAddress, stringToFixedBytes } from '$lib/utils/format';
   import {
     findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
-    findOtGovernancePda, findOtTreasuryPda, findAta,
+    findOtGovernancePda, findOtTreasuryPda
+  } from '@areal/sdk/pda';
+  import {
+    findAta,
     TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
     USDC_MINTS
   } from '$lib/utils/pda';

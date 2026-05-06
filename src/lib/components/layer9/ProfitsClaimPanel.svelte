@@ -13,7 +13,8 @@
     TOKEN_KIND_USDC,
   } from '$lib/api/layer9';
   import { sendWalletTransaction } from '$lib/utils/tx';
-  import { findAta, findLpPositionPda } from '$lib/utils/pda';
+  import { findLpPositionPda } from '@areal/sdk/pda';
+  import { findAta } from '$lib/utils/pda';
   import { parseDecimal, isValidAddress } from '$lib/utils/format';
 
   type ToastType = 'success' | 'error' | 'info';

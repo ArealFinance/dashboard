@@ -5,7 +5,8 @@
   import { dexStore, dexClient, dexProgramId } from '$lib/stores/dex';
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
-  import { findDexConfigPda, findPoolStatePda, findLpPositionPda, findBinArrayPda, TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID } from '$lib/utils/pda';
+  import { findDexConfigPda, findPoolStatePda, findLpPositionPda, findBinArrayPda } from '@areal/sdk/pda';
+  import { TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID } from '$lib/utils/pda';
   import { getAtaAddress } from '$lib/utils/spl';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import TxStatus from '$lib/components/TxStatus.svelte';

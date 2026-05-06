@@ -48,7 +48,7 @@
     resolveTreasuryClaimAccounts,
     readClaimStatusCumulative,
   } from '$lib/utils/layer8-resolvers';
-  import { findRwtVaultPda } from '$lib/utils/pda';
+  import { findRwtVaultPda } from '@areal/sdk/pda';
   import EventFeed from '$lib/components/layer8/EventFeed.svelte';
   import MerkleProofDisplay from '$lib/components/layer8/MerkleProofDisplay.svelte';
   import ManualTriggerModal from '$lib/components/layer8/ManualTriggerModal.svelte';

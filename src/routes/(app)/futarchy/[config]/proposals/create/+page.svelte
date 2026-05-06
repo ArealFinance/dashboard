@@ -5,7 +5,7 @@
   import { PublicKey, SystemProgram } from '@solana/web3.js';
   import { wallet } from '$lib/stores/wallet';
   import { futarchyClient, futarchyProgramId } from '$lib/stores/futarchy';
-  import { findProposalPda } from '$lib/utils/pda';
+  import { findProposalPda } from '@areal/sdk/pda';
   import { isValidAddress, stringToFixedBytes } from '$lib/utils/format';
   import { sendWalletTransaction } from '$lib/utils/tx';
   import { connection } from '$lib/stores/network';

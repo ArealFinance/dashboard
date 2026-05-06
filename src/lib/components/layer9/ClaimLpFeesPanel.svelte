@@ -6,7 +6,8 @@
   import { dexProgramId, dexStore } from '$lib/stores/dex';
   import { buildClaimLpFeesIx } from '$lib/api/layer9';
   import { sendWalletTransaction } from '$lib/utils/tx';
-  import { findAta, findLpPositionPda } from '$lib/utils/pda';
+  import { findLpPositionPda } from '@areal/sdk/pda';
+  import { findAta } from '$lib/utils/pda';
   import { isValidAddress } from '$lib/utils/format';
 
   type ToastType = 'success' | 'error' | 'info';

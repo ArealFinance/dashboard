@@ -4,7 +4,7 @@
   import { dexStore, dexClient, dexProgramId } from '$lib/stores/dex';
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
-  import { findDexConfigPda, findPoolCreatorsPda } from '$lib/utils/pda';
+  import { findDexConfigPda, findPoolCreatorsPda } from '@areal/sdk/pda';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import TxStatus from '$lib/components/TxStatus.svelte';
   import CopyAddress from '$lib/components/CopyAddress.svelte';

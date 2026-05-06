@@ -4,7 +4,7 @@
   import { get } from 'svelte/store';
   import { PublicKey } from '@solana/web3.js';
   import { dexStore, dexClient, type BinArrayState } from '$lib/stores/dex';
-  import { findBinArrayPda } from '$lib/utils/pda';
+  import { findBinArrayPda } from '@areal/sdk/pda';
   import { formatAddress } from '$lib/utils/format';
   import { connection } from '$lib/stores/network';
   import { signAndSendTransaction } from '$lib/utils/tx';

@@ -10,7 +10,8 @@
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import TxStatus from '$lib/components/TxStatus.svelte';
   import { bytesToBase58, isValidAddress, isZeroAddress } from '$lib/utils/format';
-  import { findOtGovernancePda, TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { findOtGovernancePda } from '@areal/sdk/pda';
+  import { TOKEN_PROGRAM_ID } from '$lib/utils/pda';
   import type { OtState } from '$lib/stores/ot';
   import type { Writable } from 'svelte/store';
 
