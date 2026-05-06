@@ -1,14 +1,36 @@
 import { PublicKey } from '@solana/web3.js';
 
 /**
- * Well-known program IDs
+ * Dashboard-local PDA helpers and program-ID constants.
+ *
+ * Phase 4 R3 — most PDA derivers have been moved to `@areal/sdk/pda`.
+ * What remains here:
+ *
+ *   1. Well-known program IDs (TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID,
+ *      ASSOCIATED_TOKEN_PROGRAM_ID, USDC_MINTS) — these are constants
+ *      consumed widely by stores and route components. The SDK exposes
+ *      similar via `@areal/sdk` (root) under slightly different names
+ *      (e.g. SPL_TOKEN_PROGRAM_ID); call sites can be migrated piecemeal.
+ *   2. `findAta` — the SDK has `findAssociatedTokenAddressPda` returning
+ *      `[PublicKey, number]`, while dashboard code expects a single
+ *      `PublicKey`. Kept as a thin wrapper for back-compat.
+ *   3. `findMerkleDistributorPda`, `findYdAccumulatorPda`,
+ *      `findClaimStatusPda` — kept here because the dashboard's historical
+ *      parameter order (`programId`-first) differs from the SDK's
+ *      `otMint`/`distributor`-first order. Migrating ~25 call sites to the
+ *      SDK signature is a follow-up cleanup; until then this file holds
+ *      the legacy signature so behavior is preserved.
+ */
+
+/**
+ * Well-known program IDs.
  */
 export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 export const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 
 /**
- * Known USDC mints per cluster
+ * Known USDC mints per cluster.
  */
 export const USDC_MINTS: Record<string, PublicKey> = {
   'mainnet-beta': new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'),
@@ -16,182 +38,12 @@ export const USDC_MINTS: Record<string, PublicKey> = {
 };
 
 /**
- * Derive OtConfig PDA
- */
-export function findOtConfigPda(otMint: PublicKey, programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('ot_config'), otMint.toBuffer()],
-    programId
-  );
-}
-
-/**
- * Derive RevenueAccount PDA
- */
-export function findRevenueAccountPda(otMint: PublicKey, programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('revenue'), otMint.toBuffer()],
-    programId
-  );
-}
-
-/**
- * Derive RevenueConfig PDA
- */
-export function findRevenueConfigPda(otMint: PublicKey, programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('revenue_config'), otMint.toBuffer()],
-    programId
-  );
-}
-
-/**
- * Derive OtGovernance PDA
- */
-export function findOtGovernancePda(otMint: PublicKey, programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('ot_governance'), otMint.toBuffer()],
-    programId
-  );
-}
-
-/**
- * Derive OtTreasury PDA
- */
-export function findOtTreasuryPda(otMint: PublicKey, programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('ot_treasury'), otMint.toBuffer()],
-    programId
-  );
-}
-
-/**
- * Derive FutarchyConfig PDA
- */
-export function findFutarchyConfigPda(otMint: PublicKey, programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('futarchy_config'), otMint.toBuffer()],
-    programId
-  );
-}
-
-/**
- * Derive Proposal PDA
- */
-export function findProposalPda(configPda: PublicKey, proposalId: bigint, programId: PublicKey): [PublicKey, number] {
-  const idBuffer = Buffer.alloc(8);
-  idBuffer.writeBigUInt64LE(proposalId);
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('proposal'), configPda.toBuffer(), idBuffer],
-    programId
-  );
-}
-
-/**
- * Derive RwtVault PDA (singleton)
- */
-export function findRwtVaultPda(programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('rwt_vault')],
-    programId
-  );
-}
-
-/**
- * Derive RwtDistributionConfig PDA (singleton)
- */
-export function findRwtDistConfigPda(programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('dist_config_rwt')],
-    programId
-  );
-}
-
-// =========================================================================
-// Native DEX PDAs
-// =========================================================================
-
-/**
- * Derive DexConfig PDA (singleton)
- */
-export function findDexConfigPda(programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('dex_config')],
-    programId
-  );
-}
-
-/**
- * Derive PoolCreators PDA (singleton)
- */
-export function findPoolCreatorsPda(programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('pool_creators')],
-    programId
-  );
-}
-
-/**
- * Derive PoolState PDA
- * Seeds: ["pool", token_a_mint, token_b_mint] (canonical order: a < b)
- */
-export function findPoolStatePda(
-  tokenAMint: PublicKey,
-  tokenBMint: PublicKey,
-  programId: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('pool'), tokenAMint.toBuffer(), tokenBMint.toBuffer()],
-    programId
-  );
-}
-
-/**
- * Derive LpPosition PDA
- * Seeds: ["lp", pool_state, provider]
- */
-export function findLpPositionPda(
-  poolState: PublicKey,
-  provider: PublicKey,
-  programId: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('lp'), poolState.toBuffer(), provider.toBuffer()],
-    programId
-  );
-}
-
-/**
- * Derive BinArray PDA for concentrated pools
- * Seeds: ["bins", pool_state]
- */
-export function findBinArrayPda(
-  poolState: PublicKey,
-  programId: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('bins'), poolState.toBuffer()],
-    programId
-  );
-}
-
-// =========================================================================
-// Yield Distribution PDAs
-// =========================================================================
-
-/**
- * Derive YD DistributionConfig PDA (singleton)
- */
-export function findYdConfigPda(programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('dist_config')],
-    programId
-  );
-}
-
-/**
- * Derive MerkleDistributor PDA
+ * Derive MerkleDistributor PDA.
  * Seeds: ["merkle_dist", ot_mint]
+ *
+ * Legacy parameter order — matches the dashboard's historical signature.
+ * The SDK's `findMerkleDistributorPda` takes (otMint, programId) instead;
+ * a follow-up will migrate call sites and remove this wrapper.
  */
 export function findMerkleDistributorPda(
   programId: PublicKey,
@@ -204,8 +56,10 @@ export function findMerkleDistributorPda(
 }
 
 /**
- * Derive YD Accumulator PDA
+ * Derive YD Accumulator PDA.
  * Seeds: ["accumulator", ot_mint]
+ *
+ * Legacy parameter order — see findMerkleDistributorPda above.
  */
 export function findYdAccumulatorPda(
   programId: PublicKey,
@@ -218,8 +72,10 @@ export function findYdAccumulatorPda(
 }
 
 /**
- * Derive ClaimStatus PDA
+ * Derive ClaimStatus PDA.
  * Seeds: ["claim_status", distributor, claimant]
+ *
+ * Legacy parameter order — see findMerkleDistributorPda above.
  */
 export function findClaimStatusPda(
   programId: PublicKey,
@@ -233,36 +89,8 @@ export function findClaimStatusPda(
 }
 
 /**
- * Derive LiquidityHolding PDA (Layer 8, singleton — per D11.1).
- * Seeds: ["liq_holding"] — no ot_mint, single global pot.
- */
-export function findLiquidityHoldingPda(
-  programId: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('liq_holding')],
-    programId
-  );
-}
-
-/**
- * Derive LiquidityNexus PDA (Layer 9, singleton — DEX-program-owned per D17).
- * Seeds: ["liquidity_nexus"] — single global Nexus counter.
- *
- * Used by `withdraw_liquidity_holding` (R20) as the drain destination's
- * counter PDA. Pinned to `contracts/native-dex/src/constants.rs::LIQUIDITY_NEXUS_SEED`.
- */
-export function findLiquidityNexusPda(
-  programId: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('liquidity_nexus')],
-    programId
-  );
-}
-
-/**
- * Derive Associated Token Account address
+ * Derive Associated Token Account address.
+ * Returns just the PublicKey (the bump is rarely needed at call sites).
  */
 export function findAta(owner: PublicKey, mint: PublicKey): PublicKey {
   const [ata] = PublicKey.findProgramAddressSync(
