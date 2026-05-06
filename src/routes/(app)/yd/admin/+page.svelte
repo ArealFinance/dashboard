@@ -13,8 +13,8 @@
   import { connection } from '$lib/stores/network';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
+  import { findYdConfigPda } from '@areal/sdk/pda';
   import {
-    findYdConfigPda,
     findMerkleDistributorPda,
     findYdAccumulatorPda,
     TOKEN_PROGRAM_ID,

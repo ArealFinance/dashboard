@@ -4,7 +4,8 @@
   import { rwtStore, rwtClient, rwtProgramId } from '$lib/stores/rwt';
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
-  import { findRwtVaultPda, findRwtDistConfigPda, TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, USDC_MINTS } from '$lib/utils/pda';
+  import { findRwtVaultPda, findRwtDistConfigPda } from '@areal/sdk/pda';
+  import { TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, USDC_MINTS } from '$lib/utils/pda';
   import { network } from '$lib/stores/network';
   import { formatAddress } from '$lib/utils/format';
   import { signAndSendTransaction } from '$lib/utils/tx';

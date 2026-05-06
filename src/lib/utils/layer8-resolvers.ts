@@ -31,17 +31,24 @@ import {
   type RwtDistributionConfigState,
 } from '$lib/api/layer8';
 import {
-  findAta,
-  findClaimStatusPda,
   findLiquidityHoldingPda,
   findLiquidityNexusPda,
-  findMerkleDistributorPda,
   findOtTreasuryPda,
   findPoolStatePda,
   findRwtDistConfigPda,
   findRwtVaultPda,
-  findYdAccumulatorPda,
   findYdConfigPda,
+} from '@areal/sdk/pda';
+// Note (Phase 4 R3): findMerkleDistributorPda, findYdAccumulatorPda, and
+// findClaimStatusPda are kept on the dashboard-local pda.ts because their
+// historical parameter order (programId-first) differs from the SDK's
+// otMint-first convention. Migrating call sites to the SDK signature is a
+// follow-up cleanup, tracked separately.
+import {
+  findAta,
+  findClaimStatusPda,
+  findMerkleDistributorPda,
+  findYdAccumulatorPda,
 } from '$lib/utils/pda';
 
 /**

@@ -6,7 +6,7 @@
   import { wallet } from '$lib/stores/wallet';
   import { futarchyClient, futarchyProgramId } from '$lib/stores/futarchy';
   import { programId as otProgramId } from '$lib/stores/ot';
-  import { findOtGovernancePda } from '$lib/utils/pda';
+  import { findOtGovernancePda } from '@areal/sdk/pda';
   import { isValidAddress, bytesToBase58 } from '$lib/utils/format';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { connection } from '$lib/stores/network';

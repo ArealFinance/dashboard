@@ -3,11 +3,11 @@ import { lookupKnownAddress } from '$lib/stores/known-addresses';
 import { PROTOCOL_PROGRAMS } from '$lib/stores/protocol';
 import {
   findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
-  findOtGovernancePda, findOtTreasuryPda, findAta,
+  findOtGovernancePda, findOtTreasuryPda,
   findFutarchyConfigPda,
-  findDexConfigPda, findPoolCreatorsPda,
-  USDC_MINTS
-} from '$lib/utils/pda';
+  findDexConfigPda, findPoolCreatorsPda
+} from '@areal/sdk/pda';
+import { findAta, USDC_MINTS } from '$lib/utils/pda';
 import { formatAddress, bytesToBase58, trimNullBytes } from '$lib/utils/format';
 import { dexProgramId } from '$lib/stores/dex';
 import { futarchyProgramId } from '$lib/stores/futarchy';

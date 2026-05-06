@@ -53,7 +53,8 @@
       const conn = get(connection);
       // Lazy import of ydClient to mirror pattern from other layers.
       const { ydClient, ydProgramId } = await import('$lib/stores/yd');
-      const { findYdConfigPda, findMerkleDistributorPda } = await import('$lib/utils/pda');
+      const { findYdConfigPda } = await import('@areal/sdk/pda');
+      const { findMerkleDistributorPda } = await import('$lib/utils/pda');
 
       const client = get(ydClient);
       const distributorPda = new PublicKey(d.address);

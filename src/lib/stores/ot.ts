@@ -3,16 +3,15 @@ import { PublicKey } from '@solana/web3.js';
 import { ArlexClient } from '@arlex/client';
 import { connection, network } from './network';
 import { trimNullBytes as trimNull } from '$lib/utils/format';
-import idl from '$lib/idl/ownership-token.json';
+import idl from '@areal/sdk/idl/ownership-token.json';
 import {
   findOtConfigPda,
   findRevenueAccountPda,
   findRevenueConfigPda,
   findOtGovernancePda,
-  findOtTreasuryPda,
-  findAta,
-  USDC_MINTS
-} from '$lib/utils/pda';
+  findOtTreasuryPda
+} from '@areal/sdk/pda';
+import { findAta, USDC_MINTS } from '$lib/utils/pda';
 import type { Cluster } from './network';
 
 // Program ID — will be updated after deployment

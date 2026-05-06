@@ -15,7 +15,9 @@ import {
   findPoolCreatorsPda,
   findPoolStatePda,
   findLpPositionPda,
-  findBinArrayPda,
+  findBinArrayPda
+} from '@areal/sdk/pda';
+import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID
@@ -670,7 +672,7 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
     if (!ctx.otMint) throw new Error('OT not bootstrapped. Run bootstrap step first.');
 
     const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
-    const { findFutarchyConfigPda, findOtGovernancePda } = await import('$lib/utils/pda');
+    const { findFutarchyConfigPda, findOtGovernancePda } = await import('@areal/sdk/pda');
 
     const conn = get(connection);
     const futClient = get(futClientStore);
@@ -751,7 +753,7 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
     if (!ctx.otMint || !ctx.futarchyConfigPda) throw new Error('Missing context');
 
     const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
-    const { findProposalPda } = await import('$lib/utils/pda');
+    const { findProposalPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const futClient = get(futClientStore);
 
@@ -816,7 +818,8 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
     if (!ctx.otMint || !ctx.futarchyConfigPda || !ctx.proposalPda) throw new Error('Missing context');
 
     const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
-    const { findOtConfigPda, findOtGovernancePda: findOtGov, findAta: findAtaUtil,
+    const { findOtConfigPda, findOtGovernancePda: findOtGov } = await import('@areal/sdk/pda');
+    const { findAta: findAtaUtil,
       TOKEN_PROGRAM_ID: TPK, SYSTEM_PROGRAM_ID: SPK, ASSOCIATED_TOKEN_PROGRAM_ID: ATPK } = await import('$lib/utils/pda');
     const conn = get(connection);
     const futClient = get(futClientStore);
@@ -866,7 +869,7 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
 
     // Verify OT total_minted increased
     const client = get(arlexClient);
-    const { findOtConfigPda } = await import('$lib/utils/pda');
+    const { findOtConfigPda } = await import('@areal/sdk/pda');
     const [otConfigPda] = findOtConfigPda(ctx.otMint, programId);
     const otConfig = await client.fetch('OtConfig', otConfigPda);
     const totalMinted = BigInt(otConfig?.total_minted?.toString() ?? '0');
@@ -953,7 +956,7 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
   'rwt-init-vault': async (ctx: RwtE2EContext, deployer: Keypair) => {
     if (!ctx.usdcMint || !ctx.arealFeeAta) throw new Error('Previous steps not completed');
     const { rwtClient: rwtClientStore, rwtProgramId: rwtProgId } = await import('./rwt');
-    const { findRwtVaultPda, findRwtDistConfigPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda, findRwtDistConfigPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(rwtClientStore);
     const [vaultPda] = findRwtVaultPda(rwtProgId);
@@ -1374,7 +1377,7 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
   'vs-load-state': async (ctx: VaultSwapE2EContext, deployer: Keypair) => {
     const { rwtClient: rwtClientStore, rwtProgramId: rwtProgId } = await import('./rwt');
     const { dexProgramId: dexProgId } = await import('./dex');
-    const { findRwtVaultPda: findVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda: findVaultPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(rwtClientStore);
 
@@ -1834,7 +1837,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     // Read from RWT Vault on-chain state (offset 72..104 = rwt_mint field).
     const conn = get(connection);
     const { rwtProgramId: rwtProgId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const [vaultPda] = findRwtVaultPda(rwtProgId);
     const vaultInfo = await conn.getAccountInfo(vaultPda);
     if (!vaultInfo) throw new Error('RWT Vault not found — deploy RWT Engine first');
@@ -1848,7 +1851,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
     // Read USDC mint from RWT Vault's capital accumulator ATA
     const conn = get(connection);
     const { rwtProgramId: rwtProgId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const [vaultPda] = findRwtVaultPda(rwtProgId);
     const vaultInfo = await conn.getAccountInfo(vaultPda);
     if (!vaultInfo) throw new Error('RWT Vault not found — run RWT E2E first');
@@ -2215,7 +2218,7 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
     const conn = get(connection);
     // Load RWT mint from vault
     const { rwtProgramId: rwtProgId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const [vaultPda] = findRwtVaultPda(rwtProgId);
     const vaultInfo = await conn.getAccountInfo(vaultPda);
     if (!vaultInfo) throw new Error('RWT Vault not found — run RWT E2E first');

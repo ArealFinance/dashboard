@@ -4,7 +4,7 @@
   import { rwtStore, rwtClient, rwtProgramId } from '$lib/stores/rwt';
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
-  import { findRwtVaultPda } from '$lib/utils/pda';
+  import { findRwtVaultPda } from '@areal/sdk/pda';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import TxStatus from '$lib/components/TxStatus.svelte';
   import CopyAddress from '$lib/components/CopyAddress.svelte';

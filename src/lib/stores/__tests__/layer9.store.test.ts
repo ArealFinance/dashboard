@@ -19,12 +19,17 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { PublicKey } from '@solana/web3.js';
+// SDK 0.1.2+ imports Buffer from the 'buffer' polyfill explicitly, so the
+// seed Uint8Arrays it produces are instances of that class. Match by
+// importing from the same module here — comparing against Node's native
+// global Buffer fails the spy assertion despite identical bytes.
+import { Buffer } from 'buffer';
 
 import {
   computeClaimable,
   fetchNexusManagerHealth,
 } from '$lib/api/layer9';
-import { findLpPositionPda } from '$lib/utils/pda';
+import { findLpPositionPda } from '@areal/sdk/pda';
 
 // ----------------------------------------------------------------------------
 // 1. computeClaimable math parity (matches derived store inline math)

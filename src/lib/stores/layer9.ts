@@ -33,7 +33,7 @@ import {
   type LpPositionState,
   type NexusManagerHealth,
 } from '$lib/api/layer9';
-import { findLpPositionPda } from '$lib/utils/pda';
+import { findLpPositionPda } from '@areal/sdk/pda';
 
 // -----------------------------------------------------------------------------
 // Env-driven configuration
@@ -71,8 +71,8 @@ export function resolveUsdcMint(): PublicKey {
 // LiquidityNexus PDA derivation (re-exported from pda.ts for back-compat).
 // -----------------------------------------------------------------------------
 
-export { findLiquidityNexusPda } from '$lib/utils/pda';
-import { findLiquidityNexusPda } from '$lib/utils/pda';
+export { findLiquidityNexusPda } from '@areal/sdk/pda';
+import { findLiquidityNexusPda } from '@areal/sdk/pda';
 
 // -----------------------------------------------------------------------------
 // Nexus state store

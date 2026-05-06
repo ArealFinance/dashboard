@@ -32,7 +32,7 @@ import {
   type Layer8Event,
   type LiquidityHoldingState,
 } from '$lib/api/layer8';
-import { findLiquidityHoldingPda } from '$lib/utils/pda';
+import { findLiquidityHoldingPda } from '@areal/sdk/pda';
 
 // -----------------------------------------------------------------------------
 // Env-driven endpoint resolution

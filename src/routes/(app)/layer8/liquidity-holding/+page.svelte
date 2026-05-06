@@ -29,7 +29,8 @@
     CU_BUDGETS,
   } from '$lib/utils/layer8-builders';
   import { resolveWithdrawLiquidityHoldingAccounts } from '$lib/utils/layer8-resolvers';
-  import { findAta, ASSOCIATED_TOKEN_PROGRAM_ID, findRwtVaultPda } from '$lib/utils/pda';
+  import { findRwtVaultPda } from '@areal/sdk/pda';
+  import { findAta, ASSOCIATED_TOKEN_PROGRAM_ID } from '$lib/utils/pda';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import ManualTriggerModal from '$lib/components/layer8/ManualTriggerModal.svelte';
 

@@ -74,7 +74,7 @@ export function createYdContractNegativesSteps(): E2EStep[] {
 
 async function loadRwtAndUsdc(conn: any) {
   const { rwtProgramId } = await import('./rwt');
-  const { findRwtVaultPda } = await import('$lib/utils/pda');
+  const { findRwtVaultPda } = await import('@areal/sdk/pda');
   const [vaultPda] = findRwtVaultPda(rwtProgramId);
   const info = await conn.getAccountInfo(vaultPda);
   if (!info) throw new Error('RWT Vault not found — run rwt-lifecycle first');
@@ -109,7 +109,7 @@ export const ydContractNegativesExecutors: Record<string, StepExecutor> = {
     ctx.feeAta = ata;
 
     const { rwtClient: rwtClientStore, rwtProgramId } = await import('./rwt');
-    const { findRwtVaultPda } = await import('$lib/utils/pda');
+    const { findRwtVaultPda } = await import('@areal/sdk/pda');
     const rwt = get(rwtClientStore);
     const [vaultPda] = findRwtVaultPda(rwtProgramId);
     const mintTx = rwt.buildTransaction('admin_mint_rwt', {
@@ -122,7 +122,7 @@ export const ydContractNegativesExecutors: Record<string, StepExecutor> = {
     await signAndSendTransaction(conn, mintTx, [deployer]);
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda } = await import('@areal/sdk/pda');
     const yd = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
     ctx.configPda = configPda;
