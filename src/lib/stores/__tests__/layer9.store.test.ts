@@ -24,7 +24,7 @@ import {
   computeClaimable,
   fetchNexusManagerHealth,
 } from '$lib/api/layer9';
-import { findLpPositionPda } from '$lib/utils/pda';
+import { findLpPositionPda } from '@areal/sdk/pda';
 
 // ----------------------------------------------------------------------------
 // 1. computeClaimable math parity (matches derived store inline math)

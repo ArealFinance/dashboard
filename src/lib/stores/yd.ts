@@ -2,7 +2,7 @@ import { writable, get, derived } from 'svelte/store';
 import { PublicKey } from '@solana/web3.js';
 import { ArlexClient } from '@arlex/client';
 import { connection } from './network';
-import idl from '$lib/idl/yield-distribution.json';
+import idl from '@areal/sdk/idl/yield-distribution.json';
 import { findYdConfigPda } from '@areal/sdk/pda';
 // Note (Phase 4 R3): findMerkleDistributorPda, findYdAccumulatorPda, and
 // findClaimStatusPda kept on dashboard-local pda.ts (programId-first

@@ -1,9 +1,9 @@
 import { readable } from 'svelte/store';
-import idl from '$lib/idl/ownership-token.json';
-import futarchyIdl from '$lib/idl/futarchy.json';
-import rwtIdl from '$lib/idl/rwt-engine.json';
-import dexIdl from '$lib/idl/native-dex.json';
-import ydIdl from '$lib/idl/yield-distribution.json';
+import idl from '@areal/sdk/idl/ownership-token.json';
+import futarchyIdl from '@areal/sdk/idl/futarchy.json';
+import rwtIdl from '@areal/sdk/idl/rwt-engine.json';
+import dexIdl from '@areal/sdk/idl/native-dex.json';
+import ydIdl from '@areal/sdk/idl/yield-distribution.json';
 
 /**
  * Protocol program descriptor
