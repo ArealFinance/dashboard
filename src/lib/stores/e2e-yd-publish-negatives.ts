@@ -92,7 +92,8 @@ export const ydPublishNegativesExecutors: Record<string, StepExecutor> = {
     await signAndSendTransaction(conn, mintTx, [deployer]);
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
+    const { findYdConfigPda } = await import('@areal/sdk/pda');
+    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
     const yd = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
     const [distributorPda] = findMerkleDistributorPda(ydProgramId, mintAddress);
@@ -243,7 +244,7 @@ export const ydPublishNegativesExecutors: Record<string, StepExecutor> = {
     }
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('@areal/sdk/pda');
+    const { findClaimStatusPda } = await import('$lib/utils/pda');
     const { computeLeaf } = await import('$lib/utils/merkle');
     const yd = get(ydClient);
 

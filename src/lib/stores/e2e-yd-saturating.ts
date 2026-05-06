@@ -108,7 +108,8 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
 
     // Init YD config (idempotent) and create distributor.
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
+    const { findYdConfigPda } = await import('@areal/sdk/pda');
+    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
     const ydClientInstance = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
     const [distributorPda] = findMerkleDistributorPda(ydProgramId, mintAddress);
@@ -237,7 +238,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
     await new Promise(r => setTimeout(r, 2500));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('@areal/sdk/pda');
+    const { findClaimStatusPda } = await import('$lib/utils/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
@@ -332,7 +333,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
       throw new Error('incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('@areal/sdk/pda');
+    const { findClaimStatusPda } = await import('$lib/utils/pda');
     const { computeLeaf, buildMerkleTree } = await import('$lib/utils/merkle');
     const conn = get(connection);
     const client = get(ydClient);

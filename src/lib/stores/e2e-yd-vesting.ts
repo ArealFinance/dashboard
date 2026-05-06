@@ -117,7 +117,8 @@ export const ydVestingExecutors: Record<string, StepExecutor> = {
     await signAndSendTransaction(conn, mintTx, [deployer]);
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
+    const { findYdConfigPda } = await import('@areal/sdk/pda');
+    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
     const yd = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
     const [distributorPda] = findMerkleDistributorPda(ydProgramId, mintAddress);
@@ -222,7 +223,7 @@ export const ydVestingExecutors: Record<string, StepExecutor> = {
     if (delay > 0) await new Promise(r => setTimeout(r, delay));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('@areal/sdk/pda');
+    const { findClaimStatusPda } = await import('$lib/utils/pda');
     const conn = get(connection);
     const yd = get(ydClient);
     const [cs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
@@ -275,7 +276,7 @@ export const ydVestingExecutors: Record<string, StepExecutor> = {
     if (delay > 0) await new Promise(r => setTimeout(r, delay));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('@areal/sdk/pda');
+    const { findClaimStatusPda } = await import('$lib/utils/pda');
     const conn = get(connection);
     const yd = get(ydClient);
     const [cs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);

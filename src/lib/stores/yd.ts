@@ -3,13 +3,17 @@ import { PublicKey } from '@solana/web3.js';
 import { ArlexClient } from '@arlex/client';
 import { connection } from './network';
 import idl from '$lib/idl/yield-distribution.json';
+import { findYdConfigPda } from '@areal/sdk/pda';
+// Note (Phase 4 R3): findMerkleDistributorPda, findYdAccumulatorPda, and
+// findClaimStatusPda kept on dashboard-local pda.ts (programId-first
+// signature). Migrating call sites to the SDK's otMint-first signature is
+// a follow-up cleanup.
 import {
-  findYdConfigPda,
+  findAta,
   findMerkleDistributorPda,
   findYdAccumulatorPda,
   findClaimStatusPda
-} from '@areal/sdk/pda';
-import { findAta } from '$lib/utils/pda';
+} from '$lib/utils/pda';
 
 // Program ID — sourced from IDL (generated from contract's declare_id!).
 // Fail fast if missing rather than silently using a placeholder (ADR: HIGH-1).

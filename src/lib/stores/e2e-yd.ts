@@ -158,7 +158,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     if (!ctx.otMint || !ctx.rwtMint || !ctx.usdcMint || !ctx.configPda) throw new Error('Previous steps incomplete');
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
+    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
     const client = get(ydClient);
     const [distributorPda] = findMerkleDistributorPda(ydProgramId, ctx.otMint);
     const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, ctx.otMint);
@@ -273,7 +273,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('@areal/sdk/pda');
+    const { findClaimStatusPda } = await import('$lib/utils/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
@@ -318,7 +318,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('@areal/sdk/pda');
+    const { findClaimStatusPda } = await import('$lib/utils/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
@@ -376,7 +376,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     // Negative: claim must now fail.
     let claimRejected = false;
     try {
-      const { findClaimStatusPda } = await import('@areal/sdk/pda');
+      const { findClaimStatusPda } = await import('$lib/utils/pda');
       const { ydProgramId } = await import('./yd');
       const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
       const tx2 = client.buildTransaction('claim', {
@@ -518,7 +518,8 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
   'ydf-init': async (ctx: YdFairnessCtx, deployer: Keypair) => {
     if (!ctx.otMint || !ctx.rwtMint || !ctx.usdcMint || !ctx.aliceRwtAta) throw new Error('Setup incomplete');
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
+    const { findYdConfigPda } = await import('@areal/sdk/pda');
+    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
@@ -731,7 +732,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('@areal/sdk/pda');
+    const { findClaimStatusPda } = await import('$lib/utils/pda');
     const conn = get(connection);
     const client = get(ydClient);
 
