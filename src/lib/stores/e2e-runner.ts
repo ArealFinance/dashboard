@@ -4,7 +4,7 @@ import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction 
 import { connection } from './network';
 import { devKeys } from './devkeys';
 import { arlexClient, programId } from './ot';
-import type { ArlexClient } from '$lib/arlex-client/index.mjs';
+import type { ArlexClient } from '@arlex/client';
 import {
   findOtConfigPda,
   findRevenueAccountPda,

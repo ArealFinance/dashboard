@@ -1,6 +1,6 @@
 import { writable, get, derived } from 'svelte/store';
 import { PublicKey } from '@solana/web3.js';
-import { ArlexClient } from '$lib/arlex-client/index.mjs';
+import { ArlexClient } from '@arlex/client';
 import { connection, network } from './network';
 import { trimNullBytes as trimNull } from '$lib/utils/format';
 import idl from '$lib/idl/ownership-token.json';
