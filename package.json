@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@areal/sdk": "file:../sdk",
-    "@arlex/client": "file:../vendor/arlex-client-0.3.0.tgz",
+    "@arlex/client": "file:../vendor/arlex-client-0.3.1.tgz",
     "@solana/web3.js": "^1.98.0",
     "bs58": "^6.0.0",
     "crypto-browserify": "^3.12.1",
