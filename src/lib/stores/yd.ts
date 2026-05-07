@@ -7,9 +7,9 @@ import {
   findYdConfigPda,
   findMerkleDistributorPda,
   findYdAccumulatorPda,
-  findClaimStatusPda
+  findClaimStatusPda,
+  findAssociatedTokenAddressPda
 } from '@areal/sdk/pda';
-import { findAta } from '$lib/utils/pda';
 
 // Program ID — sourced from IDL (generated from contract's declare_id!).
 // Fail fast if missing rather than silently using a placeholder (ADR: HIGH-1).
@@ -317,7 +317,7 @@ function createYdStore() {
       usdcMint: PublicKey
     ): Promise<bigint> {
       const [accumulatorPda] = findYdAccumulatorPda(otMint, PROGRAM_ID);
-      const ata = findAta(accumulatorPda, usdcMint);
+      const [ata] = findAssociatedTokenAddressPda(accumulatorPda, usdcMint);
       try {
         const conn = get(connection);
         const info = await conn.getAccountInfo(ata);

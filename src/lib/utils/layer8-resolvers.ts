@@ -31,6 +31,7 @@ import {
   type RwtDistributionConfigState,
 } from '$lib/api/layer8';
 import {
+  findAssociatedTokenAddressPda,
   findLiquidityHoldingPda,
   findClaimStatusPda,
   findLiquidityNexusPda,
@@ -42,7 +43,6 @@ import {
   findYdAccumulatorPda,
   findYdConfigPda,
 } from '@areal/sdk/pda';
-import { findAta } from '$lib/utils/pda';
 
 /**
  * Program-ID bundle the resolvers depend on. Caller passes program IDs from
@@ -186,8 +186,8 @@ export async function resolveConvertAccounts(
 
   // 5. Accumulator + ATAs.
   const [accumulatorPda] = findYdAccumulatorPda(otMint, ydProgramId);
-  const accumulatorUsdcAta = findAta(accumulatorPda, usdcMint);
-  const accumulatorRwtAta = findAta(accumulatorPda, new PublicKey(rwtVault.rwtMint));
+  const [accumulatorUsdcAta] = findAssociatedTokenAddressPda(accumulatorPda, usdcMint);
+  const [accumulatorRwtAta] = findAssociatedTokenAddressPda(accumulatorPda, new PublicKey(rwtVault.rwtMint));
 
   return {
     config: ydConfigPda,
@@ -266,7 +266,7 @@ export async function resolveRwtClaimAccounts(
     throw new Error('RWT DistributionConfig not initialized');
   }
 
-  const rwtClaimAta = findAta(rwtVaultPda, new PublicKey(rwtVault.rwtMint));
+  const [rwtClaimAta] = findAssociatedTokenAddressPda(rwtVaultPda, new PublicKey(rwtVault.rwtMint));
 
   const [ydConfigPda] = findYdConfigPda(ydProgramId);
   const [ydDistributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
@@ -445,7 +445,7 @@ export async function resolveTreasuryClaimAccounts(
   const rwtMint = new PublicKey(rwtVault.rwtMint);
 
   const [otTreasuryPda] = findOtTreasuryPda(otMint, otProgramId);
-  const treasuryRwtAta = findAta(otTreasuryPda, rwtMint);
+  const [treasuryRwtAta] = findAssociatedTokenAddressPda(otTreasuryPda, rwtMint);
 
   const [ydConfigPda] = findYdConfigPda(ydProgramId);
   const [ydDistributorPda] = findMerkleDistributorPda(ydOtMint, ydProgramId);
@@ -523,10 +523,10 @@ export async function resolveWithdrawLiquidityHoldingAccounts(
   const rwtMint = new PublicKey(rwtVault.rwtMint);
 
   const [liquidityHoldingPda] = findLiquidityHoldingPda(ydProgramId);
-  const liquidityHoldingAta = findAta(liquidityHoldingPda, rwtMint);
+  const [liquidityHoldingAta] = findAssociatedTokenAddressPda(liquidityHoldingPda, rwtMint);
 
   const [liquidityNexusPda] = findLiquidityNexusPda(dexProgramId);
-  const nexusTokenAta = findAta(liquidityNexusPda, rwtMint);
+  const [nexusTokenAta] = findAssociatedTokenAddressPda(liquidityNexusPda, rwtMint);
 
   return {
     config: ydConfigPda,

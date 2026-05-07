@@ -7,9 +7,8 @@
   import { wallet } from '$lib/stores/wallet';
   import { futarchyClient, futarchyProgramId, PROPOSAL_TYPES, PROPOSAL_STATUSES } from '$lib/stores/futarchy';
   import { programId as otProgramId } from '$lib/stores/ot';
-  import { findOtGovernancePda, findOtConfigPda, findOtTreasuryPda, findRevenueConfigPda } from '@areal/sdk/pda';
+  import { findOtGovernancePda, findOtConfigPda, findOtTreasuryPda, findRevenueConfigPda, findAssociatedTokenAddressPda } from '@areal/sdk/pda';
   import { SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
-  import { findAta } from '$lib/utils/pda';
   import { bytesToBase58, formatTimestamp, isZeroAddress, formatAddress } from '$lib/utils/format';
   import { sendWalletTransaction } from '$lib/utils/tx';
   import { connection } from '$lib/stores/network';
@@ -98,7 +97,7 @@
         // MintOt
         const [otConfigPda] = findOtConfigPda(otMint, otProgramId);
         const recipient = new PublicKey(proposal.destination);
-        const recipientAta = findAta(recipient, otMint);
+        const [recipientAta] = findAssociatedTokenAddressPda(recipient, otMint);
         remainingAccounts = [
           { pubkey: otGovPda, isWritable: false, isSigner: false },
           { pubkey: otConfigPda, isWritable: true, isSigner: false },
@@ -113,8 +112,8 @@
         // SpendTreasury
         const [otTreasuryPda] = findOtTreasuryPda(otMint, otProgramId);
         const tokenMintPk = new PublicKey(proposal.tokenMint);
-        const treasuryAta = findAta(otTreasuryPda, tokenMintPk);
-        const destAta = findAta(new PublicKey(proposal.destination), tokenMintPk);
+        const [treasuryAta] = findAssociatedTokenAddressPda(otTreasuryPda, tokenMintPk);
+        const [destAta] = findAssociatedTokenAddressPda(new PublicKey(proposal.destination), tokenMintPk);
         remainingAccounts = [
           { pubkey: otGovPda, isWritable: false, isSigner: false },
           { pubkey: otMint, isWritable: false, isSigner: false },

@@ -12,15 +12,13 @@
   import { formatAmount, isValidAddress, stringToFixedBytes } from '$lib/utils/format';
   import {
     findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
-    findOtGovernancePda, findOtTreasuryPda
+    findOtGovernancePda, findOtTreasuryPda,
+    findAssociatedTokenAddressPda
   } from '@areal/sdk/pda';
   import {
     SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
   } from '@areal/sdk/network';
-  import {
-    findAta,
-    USDC_MINTS
-  } from '$lib/utils/pda';
+  import { USDC_MINTS } from '$lib/utils/pda';
 
   // Initialize form state
   let showInitForm = false;
@@ -69,7 +67,7 @@
       const [revenueConfigPda] = findRevenueConfigPda(otMint, programId);
       const [governancePda] = findOtGovernancePda(otMint, programId);
       const [treasuryPda] = findOtTreasuryPda(otMint, programId);
-      const revenueAta = findAta(revenuePda, usdcMint);
+      const [revenueAta] = findAssociatedTokenAddressPda(revenuePda, usdcMint);
 
       const tx = client.buildTransaction('initialize_ot', {
         accounts: {

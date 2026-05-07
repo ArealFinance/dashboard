@@ -14,7 +14,7 @@
     TOKEN_KIND_USDC,
   } from '$lib/api/layer9';
   import { sendWalletTransaction } from '$lib/utils/tx';
-  import { findAta } from '$lib/utils/pda';
+  import { findAssociatedTokenAddressPda } from '@areal/sdk/pda';
   import { rwtStore } from '$lib/stores/rwt';
   import { parseDecimal } from '$lib/utils/format';
 
@@ -68,8 +68,8 @@
 
     submitting = true;
     try {
-      const depositorAta = findAta(w.publicKey, mint);
-      const nexusAta = findAta(nexusPda, mint);
+      const [depositorAta] = findAssociatedTokenAddressPda(w.publicKey, mint);
+      const [nexusAta] = findAssociatedTokenAddressPda(nexusPda, mint);
       const ix = await buildNexusDepositIx({
         dexProgramId,
         depositor: w.publicKey,

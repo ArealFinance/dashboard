@@ -9,9 +9,10 @@ import {
   findRevenueAccountPda,
   findRevenueConfigPda,
   findOtGovernancePda,
-  findOtTreasuryPda
+  findOtTreasuryPda,
+  findAssociatedTokenAddressPda
 } from '@areal/sdk/pda';
-import { findAta, USDC_MINTS } from '$lib/utils/pda';
+import { USDC_MINTS } from '$lib/utils/pda';
 import type { Cluster } from './network';
 
 // Program ID — will be updated after deployment
@@ -168,7 +169,7 @@ export function createOtStore(mintAddress: string) {
       let revenueAtaBalance = 0n;
       const usdcMint = USDC_MINTS[cluster];
       if (usdcMint) {
-        const revenueAta = findAta(revenuePda, usdcMint);
+        const [revenueAta] = findAssociatedTokenAddressPda(revenuePda, usdcMint);
         try {
           const ataInfo = await conn.getTokenAccountBalance(revenueAta);
           revenueAtaBalance = BigInt(ataInfo.value.amount);

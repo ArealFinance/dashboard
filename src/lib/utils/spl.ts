@@ -53,11 +53,14 @@ export async function createMint(
 }
 
 /**
- * Derive ATA address. Single source of truth lives in pda.ts; re-exported
- * here under the `getAtaAddress` name for existing call sites (N-2).
+ * Derive ATA address. Single-PublicKey wrapper over the SDK's tuple-returning
+ * `findAssociatedTokenAddressPda` (the bump is rarely needed at call sites).
  */
-import { findAta } from './pda';
-export const getAtaAddress = findAta;
+import { findAssociatedTokenAddressPda } from '@areal/sdk/pda';
+export function getAtaAddress(owner: PublicKey, mint: PublicKey): PublicKey {
+  const [ata] = findAssociatedTokenAddressPda(owner, mint);
+  return ata;
+}
 
 /**
  * Create an Associated Token Account.

@@ -13,15 +13,13 @@
   } from '$lib/utils/format';
   import {
     findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
-    findOtGovernancePda, findOtTreasuryPda
+    findOtGovernancePda, findOtTreasuryPda,
+    findAssociatedTokenAddressPda
   } from '@areal/sdk/pda';
   import {
     SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
   } from '@areal/sdk/network';
-  import {
-    findAta,
-    USDC_MINTS
-  } from '$lib/utils/pda';
+  import { USDC_MINTS } from '$lib/utils/pda';
   import type { OtState } from '$lib/stores/ot';
   import type { Writable } from 'svelte/store';
 
@@ -88,7 +86,7 @@
       const rawAmount = parseDecimal(mintAmount, decimals);
 
       // Derive recipient ATA
-      const recipientAta = findAta(recipient, otMint);
+      const [recipientAta] = findAssociatedTokenAddressPda(recipient, otMint);
 
       const tx = client.buildTransaction('mint_ot', {
         accounts: {
@@ -144,7 +142,7 @@
       const usdcMint = USDC_MINTS[cluster];
       if (!usdcMint) throw new Error('USDC mint not configured');
 
-      const revenueAta = findAta(revenuePda, usdcMint);
+      const [revenueAta] = findAssociatedTokenAddressPda(revenuePda, usdcMint);
 
       // Build remaining accounts from active destinations
       const rcfg = $otStore.revenueConfig;

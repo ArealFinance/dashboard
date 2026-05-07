@@ -818,15 +818,14 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
     if (!ctx.otMint || !ctx.futarchyConfigPda || !ctx.proposalPda) throw new Error('Missing context');
 
     const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
-    const { findOtConfigPda, findOtGovernancePda: findOtGov } = await import('@areal/sdk/pda');
-    const { findAta: findAtaUtil } = await import('$lib/utils/pda');
+    const { findOtConfigPda, findOtGovernancePda: findOtGov, findAssociatedTokenAddressPda } = await import('@areal/sdk/pda');
     const { SPL_TOKEN_PROGRAM_ID: TPK, SYSTEM_PROGRAM_ID: SPK, ASSOCIATED_TOKEN_PROGRAM_ID: ATPK } = await import('@areal/sdk/network');
     const conn = get(connection);
     const futClient = get(futClientStore);
 
     const [otGovPda] = findOtGov(ctx.otMint, programId);
     const [otConfigPda] = findOtConfigPda(ctx.otMint, programId);
-    const recipientAta = findAtaUtil(deployer.publicKey, ctx.otMint);
+    const [recipientAta] = findAssociatedTokenAddressPda(deployer.publicKey, ctx.otMint);
 
     const tx = futClient.buildTransaction('execute_proposal', {
       accounts: {
@@ -875,8 +874,8 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
     const totalMinted = BigInt(otConfig?.total_minted?.toString() ?? '0');
 
     // Verify token balance
-    const { findAta: findAtaUtil } = await import('$lib/utils/pda');
-    const recipientAta = findAtaUtil(deployer.publicKey, ctx.otMint);
+    const { findAssociatedTokenAddressPda } = await import('@areal/sdk/pda');
+    const [recipientAta] = findAssociatedTokenAddressPda(deployer.publicKey, ctx.otMint);
     let balance = 0n;
     try {
       const info = await conn.getTokenAccountBalance(recipientAta);
