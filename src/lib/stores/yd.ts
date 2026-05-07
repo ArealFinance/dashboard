@@ -5,14 +5,14 @@ import { connection } from './network';
 import idl from '@areal/sdk/idl/yield-distribution.json';
 import {
   findYdConfigPda,
-  findMerkleDistributorPda
+  findMerkleDistributorPda,
+  findYdAccumulatorPda
 } from '@areal/sdk/pda';
-// Note (Phase 4 R3): findYdAccumulatorPda and findClaimStatusPda kept on
-// dashboard-local pda.ts (programId-first signature). Migrating call sites
-// to the SDK's otMint-first signature is a follow-up cleanup.
+// Note (Phase 4 R3): findClaimStatusPda kept on dashboard-local pda.ts
+// (programId-first signature). Migrating call sites to the SDK's
+// distributor-first signature is a follow-up cleanup.
 import {
   findAta,
-  findYdAccumulatorPda,
   findClaimStatusPda
 } from '$lib/utils/pda';
 
@@ -167,7 +167,7 @@ export function getDistributorPda(otMint: PublicKey): [PublicKey, number] {
 }
 
 export function getAccumulatorPda(otMint: PublicKey): [PublicKey, number] {
-  return findYdAccumulatorPda(PROGRAM_ID, otMint);
+  return findYdAccumulatorPda(otMint, PROGRAM_ID);
 }
 
 export function getClaimStatusPda(
@@ -302,7 +302,7 @@ function createYdStore() {
      */
     async loadAccumulator(otMint: PublicKey): Promise<YdAccumulatorState | null> {
       const client = get(ydClient);
-      const [pda] = findYdAccumulatorPda(PROGRAM_ID, otMint);
+      const [pda] = findYdAccumulatorPda(otMint, PROGRAM_ID);
       try {
         const data = await client.fetch('Accumulator', pda);
         if (!data) return null;
@@ -321,7 +321,7 @@ function createYdStore() {
       otMint: PublicKey,
       usdcMint: PublicKey
     ): Promise<bigint> {
-      const [accumulatorPda] = findYdAccumulatorPda(PROGRAM_ID, otMint);
+      const [accumulatorPda] = findYdAccumulatorPda(otMint, PROGRAM_ID);
       const ata = findAta(accumulatorPda, usdcMint);
       try {
         const conn = get(connection);

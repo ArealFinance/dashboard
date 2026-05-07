@@ -13,9 +13,8 @@
   import { connection } from '$lib/stores/network';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
-  import { findYdConfigPda, findMerkleDistributorPda } from '@areal/sdk/pda';
+  import { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } from '@areal/sdk/pda';
   import {
-    findYdAccumulatorPda,
     TOKEN_PROGRAM_ID,
     SYSTEM_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID
@@ -110,7 +109,7 @@
       const usdcMint = new PublicKey(createUsdcMint.trim());
 
       const [distributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
-      const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, otMint);
+      const [accumulatorPda] = findYdAccumulatorPda(otMint, ydProgramId);
       const rewardVault = getAtaAddress(distributorPda, rwtMint);
       const accUsdcAta = getAtaAddress(accumulatorPda, usdcMint);
 

@@ -117,12 +117,11 @@ export const ydVestingExecutors: Record<string, StepExecutor> = {
     await signAndSendTransaction(conn, mintTx, [deployer]);
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda, findMerkleDistributorPda } = await import('@areal/sdk/pda');
-    const { findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const yd = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
     const [distributorPda] = findMerkleDistributorPda(mintAddress, ydProgramId);
-    const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, mintAddress);
+    const [accumulatorPda] = findYdAccumulatorPda(mintAddress, ydProgramId);
     ctx.configPda = configPda;
     ctx.distributorPda = distributorPda;
     ctx.accumulatorPda = accumulatorPda;

@@ -38,16 +38,16 @@ import {
   findMerkleDistributorPda,
   findRwtDistConfigPda,
   findRwtVaultPda,
+  findYdAccumulatorPda,
   findYdConfigPda,
 } from '@areal/sdk/pda';
-// Note (Phase 4 R3): findYdAccumulatorPda and findClaimStatusPda are kept on
-// the dashboard-local pda.ts because their historical parameter order
-// (programId-first) differs from the SDK's convention. Migrating call sites
-// to the SDK signature is a follow-up cleanup, tracked separately.
+// Note (Phase 4 R3): findClaimStatusPda is kept on the dashboard-local
+// pda.ts because its historical parameter order (programId-first) differs
+// from the SDK's distributor-first convention. Migrating call sites to the
+// SDK signature is a follow-up cleanup, tracked separately.
 import {
   findAta,
   findClaimStatusPda,
-  findYdAccumulatorPda,
 } from '$lib/utils/pda';
 
 /**
@@ -191,7 +191,7 @@ export async function resolveConvertAccounts(
   const direction = selectMasterPoolDirection(masterPool, usdcMint);
 
   // 5. Accumulator + ATAs.
-  const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, otMint);
+  const [accumulatorPda] = findYdAccumulatorPda(otMint, ydProgramId);
   const accumulatorUsdcAta = findAta(accumulatorPda, usdcMint);
   const accumulatorRwtAta = findAta(accumulatorPda, new PublicKey(rwtVault.rwtMint));
 
