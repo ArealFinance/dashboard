@@ -5,14 +5,15 @@ import {
   findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
   findOtGovernancePda, findOtTreasuryPda,
   findFutarchyConfigPda,
-  findDexConfigPda, findPoolCreatorsPda
+  findDexConfigPda, findPoolCreatorsPda,
+  findAssociatedTokenAddressPda
 } from '@areal/sdk/pda';
-import { findAta, USDC_MINTS } from '$lib/utils/pda';
+import { USDC_MINTS } from '@areal/sdk/network';
 import { formatAddress, bytesToBase58, trimNullBytes } from '$lib/utils/format';
 import { dexProgramId } from '$lib/stores/dex';
 import { futarchyProgramId } from '$lib/stores/futarchy';
 import type { OtState } from '$lib/stores/ot';
-import type { Cluster } from '$lib/stores/network';
+import { toSdkCluster, type Cluster } from '$lib/stores/network';
 
 /**
  * Result of resolving an on-chain address to a human-readable label
@@ -133,15 +134,15 @@ function resolveOtPda(
     }
 
     // Revenue USDC ATA
-    const usdcMint = USDC_MINTS[cluster];
+    const usdcMint = USDC_MINTS[toSdkCluster(cluster)];
     if (usdcMint) {
-      const revenueAta = findAta(revenuePda, usdcMint);
+      const [revenueAta] = findAssociatedTokenAddressPda(revenuePda, usdcMint);
       if (revenueAta.toBase58() === address) {
         return { label: `Revenue USDC ATA [${mintShort}]`, type: 'ata', module: 'ot' };
       }
 
       // Treasury USDC ATA
-      const treasuryAta = findAta(treasuryPda, usdcMint);
+      const [treasuryAta] = findAssociatedTokenAddressPda(treasuryPda, usdcMint);
       if (treasuryAta.toBase58() === address) {
         return { label: `Treasury USDC ATA [${mintShort}]`, type: 'ata', module: 'ot' };
       }

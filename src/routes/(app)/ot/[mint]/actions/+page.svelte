@@ -13,13 +13,14 @@
   } from '$lib/utils/format';
   import {
     findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
-    findOtGovernancePda, findOtTreasuryPda
+    findOtGovernancePda, findOtTreasuryPda,
+    findAssociatedTokenAddressPda
   } from '@areal/sdk/pda';
   import {
-    findAta,
-    TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+    SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
     USDC_MINTS
-  } from '$lib/utils/pda';
+  } from '@areal/sdk/network';
+  import { toSdkCluster } from '$lib/stores/network';
   import type { OtState } from '$lib/stores/ot';
   import type { Writable } from 'svelte/store';
 
@@ -86,7 +87,7 @@
       const rawAmount = parseDecimal(mintAmount, decimals);
 
       // Derive recipient ATA
-      const recipientAta = findAta(recipient, otMint);
+      const [recipientAta] = findAssociatedTokenAddressPda(recipient, otMint);
 
       const tx = client.buildTransaction('mint_ot', {
         accounts: {
@@ -97,7 +98,7 @@
           recipient_token_account: recipientAta,
           recipient: recipient,
           payer: $publicKey,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },
@@ -139,10 +140,10 @@
 
       const [revenuePda] = findRevenueAccountPda(otMint, programId);
       const [revenueConfigPda] = findRevenueConfigPda(otMint, programId);
-      const usdcMint = USDC_MINTS[cluster];
+      const usdcMint = USDC_MINTS[toSdkCluster(cluster)];
       if (!usdcMint) throw new Error('USDC mint not configured');
 
-      const revenueAta = findAta(revenuePda, usdcMint);
+      const [revenueAta] = findAssociatedTokenAddressPda(revenuePda, usdcMint);
 
       // Build remaining accounts from active destinations
       const rcfg = $otStore.revenueConfig;
@@ -176,7 +177,7 @@
           revenue_token_account: revenueAta,
           revenue_config: revenueConfigPda,
           areal_fee_account: feeDestPk,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         remainingAccounts,
         computeUnits: 300_000
@@ -231,7 +232,7 @@
           treasury_token_account: selectedTa.address,
           destination_token_account: destination,
           token_mint: selectedTa.mint,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         args: { amount: rawAmount },
         computeUnits: 200_000

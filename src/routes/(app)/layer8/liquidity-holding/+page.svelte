@@ -29,8 +29,8 @@
     CU_BUDGETS,
   } from '$lib/utils/layer8-builders';
   import { resolveWithdrawLiquidityHoldingAccounts } from '$lib/utils/layer8-resolvers';
-  import { findRwtVaultPda } from '@areal/sdk/pda';
-  import { findAta, ASSOCIATED_TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { findRwtVaultPda, findAssociatedTokenAddressPda } from '@areal/sdk/pda';
+  import { ASSOCIATED_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import ManualTriggerModal from '$lib/components/layer8/ManualTriggerModal.svelte';
 
@@ -115,7 +115,7 @@
     }
     const { PublicKey } = await import('@solana/web3.js');
     const rwtMint = new PublicKey(vault.rwtMint);
-    const liquidityHoldingAta = findAta(pda, rwtMint);
+    const [liquidityHoldingAta] = findAssociatedTokenAddressPda(pda, rwtMint);
 
     const ix = await buildInitializeLiquidityHoldingIx({
       ydProgramId,
@@ -143,7 +143,7 @@
         liquidityHoldingAtaBalance = 0n;
         return;
       }
-      const ata = findAta(pda, new PublicKey(vault.rwtMint));
+      const [ata] = findAssociatedTokenAddressPda(pda, new PublicKey(vault.rwtMint));
       const info = await conn.getAccountInfo(ata, 'confirmed');
       if (!info || info.data.length < 72) {
         liquidityHoldingAtaBalance = 0n;

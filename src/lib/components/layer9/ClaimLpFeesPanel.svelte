@@ -6,8 +6,7 @@
   import { dexProgramId, dexStore } from '$lib/stores/dex';
   import { buildClaimLpFeesIx } from '$lib/api/layer9';
   import { sendWalletTransaction } from '$lib/utils/tx';
-  import { findLpPositionPda } from '@areal/sdk/pda';
-  import { findAta } from '$lib/utils/pda';
+  import { findLpPositionPda, findAssociatedTokenAddressPda } from '@areal/sdk/pda';
   import { isValidAddress } from '$lib/utils/format';
 
   type ToastType = 'success' | 'error' | 'info';
@@ -53,8 +52,8 @@
         lpPosition: lpPda,
         poolVaultA: new PublicKey(pool.vaultA),
         poolVaultB: new PublicKey(pool.vaultB),
-        recipientTokenAAta: findAta(w.publicKey, tokenAMint),
-        recipientTokenBAta: findAta(w.publicKey, tokenBMint),
+        recipientTokenAAta: findAssociatedTokenAddressPda(w.publicKey, tokenAMint)[0],
+        recipientTokenBAta: findAssociatedTokenAddressPda(w.publicKey, tokenBMint)[0],
       });
       const tx = new Transaction().add(ix);
       const sig = await sendWalletTransaction($connection, tx, {

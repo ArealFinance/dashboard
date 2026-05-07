@@ -12,8 +12,7 @@
     resolveUsdcSide,
   } from '$lib/api/layer9';
   import { sendWalletTransaction } from '$lib/utils/tx';
-  import { findLpPositionPda } from '@areal/sdk/pda';
-  import { findAta } from '$lib/utils/pda';
+  import { findLpPositionPda, findAssociatedTokenAddressPda } from '@areal/sdk/pda';
   import { isValidAddress, parseDecimal } from '$lib/utils/format';
 
   type ToastType = 'success' | 'error' | 'info';
@@ -88,8 +87,8 @@
       const aToB = swapDirection === 'aToB';
       const tokenAMint = new PublicKey(pool.tokenAMint);
       const tokenBMint = new PublicKey(pool.tokenBMint);
-      const nexusTokenA = findAta(nexusPda, tokenAMint);
-      const nexusTokenB = findAta(nexusPda, tokenBMint);
+      const [nexusTokenA] = findAssociatedTokenAddressPda(nexusPda, tokenAMint);
+      const [nexusTokenB] = findAssociatedTokenAddressPda(nexusPda, tokenBMint);
       const ix = await buildNexusSwapIx({
         dexProgramId,
         manager: w.publicKey,
@@ -175,8 +174,8 @@
         liquidityNexus: nexusPda,
         poolState: poolPda,
         lpPosition: lpPda,
-        nexusTokenA: findAta(nexusPda, tokenAMint),
-        nexusTokenB: findAta(nexusPda, tokenBMint),
+        nexusTokenA: findAssociatedTokenAddressPda(nexusPda, tokenAMint)[0],
+        nexusTokenB: findAssociatedTokenAddressPda(nexusPda, tokenBMint)[0],
         vaultA: new PublicKey(pool.vaultA),
         vaultB: new PublicKey(pool.vaultB),
         amountA,
@@ -237,8 +236,8 @@
         liquidityNexus: nexusPda,
         poolState: poolPda,
         lpPosition: lpPda,
-        nexusTokenA: findAta(nexusPda, tokenAMint),
-        nexusTokenB: findAta(nexusPda, tokenBMint),
+        nexusTokenA: findAssociatedTokenAddressPda(nexusPda, tokenAMint)[0],
+        nexusTokenB: findAssociatedTokenAddressPda(nexusPda, tokenBMint)[0],
         vaultA: new PublicKey(pool.vaultA),
         vaultB: new PublicKey(pool.vaultB),
         sharesToBurn,

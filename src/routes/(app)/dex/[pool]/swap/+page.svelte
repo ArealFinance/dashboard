@@ -6,7 +6,7 @@
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
   import { findDexConfigPda, findBinArrayPda } from '@areal/sdk/pda';
-  import { TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
   import { getAtaAddress } from '$lib/utils/spl';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import TxStatus from '$lib/components/TxStatus.svelte';
@@ -81,7 +81,7 @@
           vault_in: vaultIn,
           vault_out: vaultOut,
           areal_fee_account: arealFee,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
         },
         args: {
           amount_in: amountInLamports,

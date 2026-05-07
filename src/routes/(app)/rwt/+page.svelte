@@ -5,8 +5,8 @@
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
   import { findRwtVaultPda, findRwtDistConfigPda } from '@areal/sdk/pda';
-  import { TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, USDC_MINTS } from '$lib/utils/pda';
-  import { network } from '$lib/stores/network';
+  import { SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, USDC_MINTS } from '@areal/sdk/network';
+  import { network, toSdkCluster } from '$lib/stores/network';
   import { formatAddress } from '$lib/utils/format';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
@@ -61,7 +61,7 @@
       const client = get(rwtClient);
 
       const rwtMintKeypair = Keypair.generate();
-      const usdcMint = USDC_MINTS[$network];
+      const usdcMint = USDC_MINTS[toSdkCluster($network)];
 
       const [vaultPda] = findRwtVaultPda(rwtProgramId);
       const [distConfigPda] = findRwtDistConfigPda(rwtProgramId);
@@ -77,7 +77,7 @@
           usdc_mint: usdcMint,
           capital_accumulator_ata: capitalAccAta,
           areal_fee_destination_account: feeAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },
@@ -111,7 +111,7 @@
       const [vaultPda] = findRwtVaultPda(rwtProgramId);
       const rwtMint = new PublicKey(vault.rwtMint);
 
-      const usdcMint = USDC_MINTS[$network];
+      const usdcMint = USDC_MINTS[toSdkCluster($network)];
       const userUsdcAta = getAtaAddress(deployer.publicKey, usdcMint);
       const userRwtAta = getAtaAddress(deployer.publicKey, rwtMint);
       const capitalAcc = new PublicKey(vault.capitalAccumulatorAta);
@@ -126,7 +126,7 @@
           user_rwt: userRwtAta,
           capital_acc: capitalAcc,
           dao_fee_account: daoFeeAcc,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         args: { amount: mintAmountLamports, min_rwt_out: 1 }
       });

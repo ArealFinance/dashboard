@@ -15,10 +15,10 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import type { E2EStep } from './e2e-runner';
 import { connection } from './network';
 import {
-  TOKEN_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID
-} from '$lib/utils/pda';
+} from '@areal/sdk/network';
 import { createMint, createAta, mintTo, getTokenBalance, getAtaAddress } from '$lib/utils/spl';
 import { signAndSendTransaction } from '$lib/utils/tx';
 
@@ -113,7 +113,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     const tx = client.buildTransaction('admin_mint_rwt', {
       accounts: {
         authority: deployer.publicKey, rwt_vault: vaultPda,
-        rwt_mint: ctx.rwtMint, recipient_rwt: ata, token_program: TOKEN_PROGRAM_ID
+        rwt_mint: ctx.rwtMint, recipient_rwt: ata, token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { rwt_amount: 2_000_000_000, backing_capital_usd: 2_000_000_000 } // mint 2000 RWT
     });
@@ -158,10 +158,10 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     if (!ctx.otMint || !ctx.rwtMint || !ctx.usdcMint || !ctx.configPda) throw new Error('Previous steps incomplete');
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const client = get(ydClient);
-    const [distributorPda] = findMerkleDistributorPda(ydProgramId, ctx.otMint);
-    const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, ctx.otMint);
+    const [distributorPda] = findMerkleDistributorPda(ctx.otMint, ydProgramId);
+    const [accumulatorPda] = findYdAccumulatorPda(ctx.otMint, ydProgramId);
     const rewardVault = getAtaAddress(distributorPda, ctx.rwtMint);
     const accUsdcAta = getAtaAddress(accumulatorPda, ctx.usdcMint);
     ctx.distributorPda = distributorPda;
@@ -185,7 +185,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         usdc_mint: ctx.usdcMint,
         reward_vault: rewardVault,
         accumulator_usdc_ata: accUsdcAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
         ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
       },
@@ -216,7 +216,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         depositor_token: ctx.feeAta, // deployer's RWT ATA = source
         reward_vault: ctx.rewardVault,
         fee_account: ctx.feeAta,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { amount }
     });
@@ -273,10 +273,10 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
-    const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const balBefore = await getTokenBalance(conn, ctx.aliceRwtAta);
 
@@ -290,7 +290,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         claim_status: claimStatusPda,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.aliceRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID
       },
       args: { cumulative_amount: ctx.netFunded, proof: [] },
@@ -318,10 +318,10 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
-    const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const balBefore = await getTokenBalance(conn, ctx.aliceRwtAta);
     const tx = client.buildTransaction('claim', {
@@ -334,7 +334,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         claim_status: claimStatusPda,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.aliceRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID
       },
       args: { cumulative_amount: ctx.netFunded, proof: [] },
@@ -367,7 +367,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         ot_mint: ctx.otMint,
         reward_vault: ctx.rewardVault,
         unclaimed_destination: ctx.unclaimedDest,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: {}
     });
@@ -376,9 +376,9 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     // Negative: claim must now fail.
     let claimRejected = false;
     try {
-      const { findClaimStatusPda } = await import('$lib/utils/pda');
+      const { findClaimStatusPda } = await import('@areal/sdk/pda');
       const { ydProgramId } = await import('./yd');
-      const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+      const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
       const tx2 = client.buildTransaction('claim', {
         accounts: {
           claimant: deployer.publicKey,
@@ -389,7 +389,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
           claim_status: claimStatusPda,
           reward_vault: ctx.rewardVault,
           claimant_token: ctx.unclaimedDest,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID
         },
         args: { cumulative_amount: ctx.netFunded ?? 0n, proof: [] }
@@ -500,7 +500,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
     const tx = client.buildTransaction('admin_mint_rwt', {
       accounts: {
         authority: deployer.publicKey, rwt_vault: vaultPda,
-        rwt_mint: ctx.rwtMint, recipient_rwt: ctx.aliceRwtAta, token_program: TOKEN_PROGRAM_ID
+        rwt_mint: ctx.rwtMint, recipient_rwt: ctx.aliceRwtAta, token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { rwt_amount: 2_000_000_000, backing_capital_usd: 2_000_000_000 }
     });
@@ -518,13 +518,12 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
   'ydf-init': async (ctx: YdFairnessCtx, deployer: Keypair) => {
     if (!ctx.otMint || !ctx.rwtMint || !ctx.usdcMint || !ctx.aliceRwtAta) throw new Error('Setup incomplete');
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda } = await import('@areal/sdk/pda');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
-    const [distributorPda] = findMerkleDistributorPda(ydProgramId, ctx.otMint);
-    const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, ctx.otMint);
+    const [distributorPda] = findMerkleDistributorPda(ctx.otMint, ydProgramId);
+    const [accumulatorPda] = findYdAccumulatorPda(ctx.otMint, ydProgramId);
     const rewardVault = getAtaAddress(distributorPda, ctx.rwtMint);
     const accUsdcAta = getAtaAddress(accumulatorPda, ctx.usdcMint);
     ctx.configPda = configPda;
@@ -567,7 +566,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
           usdc_mint: ctx.usdcMint,
           reward_vault: rewardVault,
           accumulator_usdc_ata: accUsdcAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },
@@ -602,7 +601,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         depositor_token: ctx.feeAta,
         reward_vault: ctx.rewardVault,
         fee_account: ctx.feeAta,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { amount: amount1 }
     });
@@ -629,7 +628,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         { pubkey: ctx.bobOtAta, isSigner: false, isWritable: true },
         { pubkey: ctx.alice.publicKey, isSigner: true, isWritable: false }
       ],
-      programId: TOKEN_PROGRAM_ID,
+      programId: SPL_TOKEN_PROGRAM_ID,
       data
     });
     const tx = new Transaction().add(ix);
@@ -664,7 +663,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         depositor_token: ctx.feeAta,
         reward_vault: ctx.rewardVault,
         fee_account: ctx.feeAta,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { amount: amount2 }
     });
@@ -732,7 +731,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
 
@@ -740,7 +739,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
     // Instead claim immediately and assert ≤ deposit{1,2}Net.
 
     // Alice claim
-    const [aliceCs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, ctx.alice.publicKey);
+    const [aliceCs] = findClaimStatusPda(ctx.distributorPda, ctx.alice.publicKey, ydProgramId);
     const aliceBefore = await getTokenBalance(conn, ctx.aliceRwtAta);
     const aliceTx = client.buildTransaction('claim', {
       accounts: {
@@ -752,7 +751,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         claim_status: aliceCs,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.aliceRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID
       },
       args: {
@@ -766,7 +765,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
     ctx.aliceReceived = aliceAfter - aliceBefore;
 
     // Bob claim
-    const [bobCs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, ctx.bob.publicKey);
+    const [bobCs] = findClaimStatusPda(ctx.distributorPda, ctx.bob.publicKey, ydProgramId);
     const bobBefore = await getTokenBalance(conn, ctx.bobRwtAta);
     const bobTx = client.buildTransaction('claim', {
       accounts: {
@@ -778,7 +777,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         claim_status: bobCs,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.bobRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID
       },
       args: {
@@ -812,7 +811,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
           claim_status: aliceCs,
           reward_vault: ctx.rewardVault,
           claimant_token: ctx.aliceRwtAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID
         },
         args: {

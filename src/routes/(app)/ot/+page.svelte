@@ -12,13 +12,14 @@
   import { formatAmount, isValidAddress, stringToFixedBytes } from '$lib/utils/format';
   import {
     findOtConfigPda, findRevenueAccountPda, findRevenueConfigPda,
-    findOtGovernancePda, findOtTreasuryPda
+    findOtGovernancePda, findOtTreasuryPda,
+    findAssociatedTokenAddressPda
   } from '@areal/sdk/pda';
   import {
-    findAta,
-    TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+    SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
     USDC_MINTS
-  } from '$lib/utils/pda';
+  } from '@areal/sdk/network';
+  import { toSdkCluster } from '$lib/stores/network';
 
   // Initialize form state
   let showInitForm = false;
@@ -58,7 +59,7 @@
       const cluster = get(network);
 
       const otMint = new PublicKey(formMint);
-      const usdcMint = USDC_MINTS[cluster];
+      const usdcMint = USDC_MINTS[toSdkCluster(cluster)];
       if (!usdcMint) throw new Error('USDC mint not configured for this cluster');
 
       // Derive PDAs
@@ -67,7 +68,7 @@
       const [revenueConfigPda] = findRevenueConfigPda(otMint, programId);
       const [governancePda] = findOtGovernancePda(otMint, programId);
       const [treasuryPda] = findOtTreasuryPda(otMint, programId);
-      const revenueAta = findAta(revenuePda, usdcMint);
+      const [revenueAta] = findAssociatedTokenAddressPda(revenuePda, usdcMint);
 
       const tx = client.buildTransaction('initialize_ot', {
         accounts: {
@@ -81,7 +82,7 @@
           ot_governance: governancePda,
           ot_treasury: treasuryPda,
           areal_fee_destination_account: new PublicKey(formFeeDestination),
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },

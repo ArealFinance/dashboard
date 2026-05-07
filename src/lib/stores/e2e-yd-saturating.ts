@@ -23,10 +23,10 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import type { E2EStep } from './e2e-runner';
 import { connection } from './network';
 import {
-  TOKEN_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-} from '$lib/utils/pda';
+} from '@areal/sdk/network';
 import { createMint, createAta, getTokenBalance, getAtaAddress } from '$lib/utils/spl';
 import { signAndSendTransaction } from '$lib/utils/tx';
 
@@ -100,7 +100,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
         rwt_vault: vaultPda,
         rwt_mint: rwtMint,
         recipient_rwt: ata,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { rwt_amount: 2_000_000_000, backing_capital_usd: 2_000_000_000 },
     });
@@ -108,12 +108,11 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
 
     // Init YD config (idempotent) and create distributor.
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda } = await import('@areal/sdk/pda');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const ydClientInstance = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
-    const [distributorPda] = findMerkleDistributorPda(ydProgramId, mintAddress);
-    const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, mintAddress);
+    const [distributorPda] = findMerkleDistributorPda(mintAddress, ydProgramId);
+    const [accumulatorPda] = findYdAccumulatorPda(mintAddress, ydProgramId);
     ctx.configPda = configPda;
     ctx.distributorPda = distributorPda;
     ctx.accumulatorPda = accumulatorPda;
@@ -151,7 +150,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
           usdc_mint: usdcMint,
           reward_vault: ctx.rewardVault,
           accumulator_usdc_ata: ctx.accUsdcAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID,
         },
@@ -184,7 +183,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
         depositor_token: ctx.feeAta,
         reward_vault: ctx.rewardVault,
         fee_account: ctx.feeAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { amount: gross },
     });
@@ -238,10 +237,10 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
     await new Promise(r => setTimeout(r, 2500));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
-    const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const balBefore = await getTokenBalance(conn, ctx.aliceRwtAta);
     const tx = client.buildTransaction('claim', {
@@ -254,7 +253,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
         claim_status: claimStatusPda,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.aliceRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: { cumulative_amount: ctx.netFunded, proof: [] },
@@ -333,11 +332,11 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
       throw new Error('incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const { computeLeaf, buildMerkleTree } = await import('$lib/utils/merkle');
     const conn = get(connection);
     const client = get(ydClient);
-    const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     // NOTE: We re-publish a single-leaf tree (Alice = shrunk) so the proof
     // becomes empty and the claim's `saturating_sub` path is exercised purely.
@@ -376,7 +375,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
           claim_status: claimStatusPda,
           reward_vault: ctx.rewardVault,
           claimant_token: ctx.aliceRwtAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
         },
         args: { cumulative_amount: ctx.shrunkCumulative, proof: [] },

@@ -13,14 +13,12 @@
   import { connection } from '$lib/stores/network';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
-  import { findYdConfigPda } from '@areal/sdk/pda';
+  import { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } from '@areal/sdk/pda';
   import {
-    findMerkleDistributorPda,
-    findYdAccumulatorPda,
-    TOKEN_PROGRAM_ID,
+    SPL_TOKEN_PROGRAM_ID,
     SYSTEM_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID
-  } from '$lib/utils/pda';
+  } from '@areal/sdk/network';
   import TxStatus from '$lib/components/TxStatus.svelte';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import { ArrowLeft } from 'lucide-svelte';
@@ -110,8 +108,8 @@
       const rwtMint = new PublicKey(createRwtMint.trim());
       const usdcMint = new PublicKey(createUsdcMint.trim());
 
-      const [distributorPda] = findMerkleDistributorPda(ydProgramId, otMint);
-      const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, otMint);
+      const [distributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
+      const [accumulatorPda] = findYdAccumulatorPda(otMint, ydProgramId);
       const rewardVault = getAtaAddress(distributorPda, rwtMint);
       const accUsdcAta = getAtaAddress(accumulatorPda, usdcMint);
 
@@ -128,7 +126,7 @@
           usdc_mint: usdcMint,
           reward_vault: rewardVault,
           accumulator_usdc_ata: accUsdcAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },
@@ -310,7 +308,7 @@
           ot_mint: otMint,
           reward_vault: rewardVault,
           unclaimed_destination: unclaimedDest,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         args: {}
       });
@@ -342,7 +340,7 @@
       const client = get(ydClient);
       const [configPda] = findYdConfigPda(ydProgramId);
       const otMint = new PublicKey(pubOtMint.trim());
-      const [distributorPda] = findMerkleDistributorPda(ydProgramId, otMint);
+      const [distributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
 
       const root = hexToBytes(pubRootHex.trim());
       if (root.length !== 32) throw new Error('Root must be 32 bytes');

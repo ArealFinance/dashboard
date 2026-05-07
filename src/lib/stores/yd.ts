@@ -3,17 +3,13 @@ import { PublicKey } from '@solana/web3.js';
 import { ArlexClient } from '@arlex/client';
 import { connection } from './network';
 import idl from '@areal/sdk/idl/yield-distribution.json';
-import { findYdConfigPda } from '@areal/sdk/pda';
-// Note (Phase 4 R3): findMerkleDistributorPda, findYdAccumulatorPda, and
-// findClaimStatusPda kept on dashboard-local pda.ts (programId-first
-// signature). Migrating call sites to the SDK's otMint-first signature is
-// a follow-up cleanup.
 import {
-  findAta,
+  findYdConfigPda,
   findMerkleDistributorPda,
   findYdAccumulatorPda,
-  findClaimStatusPda
-} from '$lib/utils/pda';
+  findClaimStatusPda,
+  findAssociatedTokenAddressPda
+} from '@areal/sdk/pda';
 
 // Program ID — sourced from IDL (generated from contract's declare_id!).
 // Fail fast if missing rather than silently using a placeholder (ADR: HIGH-1).
@@ -162,18 +158,18 @@ export function getYdConfigPda(): PublicKey {
 }
 
 export function getDistributorPda(otMint: PublicKey): [PublicKey, number] {
-  return findMerkleDistributorPda(PROGRAM_ID, otMint);
+  return findMerkleDistributorPda(otMint, PROGRAM_ID);
 }
 
 export function getAccumulatorPda(otMint: PublicKey): [PublicKey, number] {
-  return findYdAccumulatorPda(PROGRAM_ID, otMint);
+  return findYdAccumulatorPda(otMint, PROGRAM_ID);
 }
 
 export function getClaimStatusPda(
   distributor: PublicKey,
   claimant: PublicKey
 ): [PublicKey, number] {
-  return findClaimStatusPda(PROGRAM_ID, distributor, claimant);
+  return findClaimStatusPda(distributor, claimant, PROGRAM_ID);
 }
 
 // ------------- Main store -------------
@@ -251,7 +247,7 @@ function createYdStore() {
      */
     async loadDistributor(otMint: PublicKey): Promise<YdDistributorState | null> {
       const client = get(ydClient);
-      const [pda] = findMerkleDistributorPda(PROGRAM_ID, otMint);
+      const [pda] = findMerkleDistributorPda(otMint, PROGRAM_ID);
       try {
         const data = await client.fetch('MerkleDistributor', pda);
         if (!data) return null;
@@ -284,7 +280,7 @@ function createYdStore() {
       claimant: PublicKey
     ): Promise<YdClaimStatusState | null> {
       const client = get(ydClient);
-      const [pda] = findClaimStatusPda(PROGRAM_ID, distributor, claimant);
+      const [pda] = findClaimStatusPda(distributor, claimant, PROGRAM_ID);
       try {
         const data = await client.fetch('ClaimStatus', pda);
         if (!data) return null;
@@ -301,7 +297,7 @@ function createYdStore() {
      */
     async loadAccumulator(otMint: PublicKey): Promise<YdAccumulatorState | null> {
       const client = get(ydClient);
-      const [pda] = findYdAccumulatorPda(PROGRAM_ID, otMint);
+      const [pda] = findYdAccumulatorPda(otMint, PROGRAM_ID);
       try {
         const data = await client.fetch('Accumulator', pda);
         if (!data) return null;
@@ -320,8 +316,8 @@ function createYdStore() {
       otMint: PublicKey,
       usdcMint: PublicKey
     ): Promise<bigint> {
-      const [accumulatorPda] = findYdAccumulatorPda(PROGRAM_ID, otMint);
-      const ata = findAta(accumulatorPda, usdcMint);
+      const [accumulatorPda] = findYdAccumulatorPda(otMint, PROGRAM_ID);
+      const [ata] = findAssociatedTokenAddressPda(accumulatorPda, usdcMint);
       try {
         const conn = get(connection);
         const info = await conn.getAccountInfo(ata);

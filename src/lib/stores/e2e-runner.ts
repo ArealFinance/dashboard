@@ -18,10 +18,10 @@ import {
   findBinArrayPda
 } from '@areal/sdk/pda';
 import {
-  TOKEN_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID
-} from '$lib/utils/pda';
+} from '@areal/sdk/network';
 // dexClient and dexProgramId imported dynamically in DEX executors to avoid circular deps
 import { createMint, createAta, mintTo, getTokenBalance, getMintInfo, getAtaAddress } from '$lib/utils/spl';
 import { signAndSendTransaction } from '$lib/utils/tx';
@@ -213,7 +213,7 @@ const stepExecutors: Record<string, StepExecutor> = {
         ot_governance: otGovernancePda,
         ot_treasury: otTreasuryPda,
         areal_fee_destination_account: ctx.arealFeeAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
         ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
       },
@@ -341,7 +341,7 @@ const stepExecutors: Record<string, StepExecutor> = {
         revenue_token_account: ctx.revenueTokenAccount,
         revenue_config: ctx.revenueConfigPda,
         areal_fee_account: ctx.arealFeeAta,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       remainingAccounts: [
         { pubkey: ctx.destAta_a, isSigner: false, isWritable: true },
@@ -409,7 +409,7 @@ const stepExecutors: Record<string, StepExecutor> = {
         recipient_token_account: recipientAta,
         recipient: deployer.publicKey,
         payer: deployer.publicKey,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
         ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
       },
@@ -460,7 +460,7 @@ const stepExecutors: Record<string, StepExecutor> = {
         treasury_token_account: treasuryUsdcAta,
         destination_token_account: destAta,
         token_mint: ctx.usdcMint,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: {
         amount: spendAmount
@@ -644,7 +644,7 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
         ot_governance: governancePda,
         ot_treasury: treasuryPda,
         areal_fee_destination_account: feeAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SystemProgram.programId,
         ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
       },
@@ -818,15 +818,14 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
     if (!ctx.otMint || !ctx.futarchyConfigPda || !ctx.proposalPda) throw new Error('Missing context');
 
     const { futarchyClient: futClientStore, futarchyProgramId: futProgramId } = await import('./futarchy');
-    const { findOtConfigPda, findOtGovernancePda: findOtGov } = await import('@areal/sdk/pda');
-    const { findAta: findAtaUtil,
-      TOKEN_PROGRAM_ID: TPK, SYSTEM_PROGRAM_ID: SPK, ASSOCIATED_TOKEN_PROGRAM_ID: ATPK } = await import('$lib/utils/pda');
+    const { findOtConfigPda, findOtGovernancePda: findOtGov, findAssociatedTokenAddressPda } = await import('@areal/sdk/pda');
+    const { SPL_TOKEN_PROGRAM_ID: TPK, SYSTEM_PROGRAM_ID: SPK, ASSOCIATED_TOKEN_PROGRAM_ID: ATPK } = await import('@areal/sdk/network');
     const conn = get(connection);
     const futClient = get(futClientStore);
 
     const [otGovPda] = findOtGov(ctx.otMint, programId);
     const [otConfigPda] = findOtConfigPda(ctx.otMint, programId);
-    const recipientAta = findAtaUtil(deployer.publicKey, ctx.otMint);
+    const [recipientAta] = findAssociatedTokenAddressPda(deployer.publicKey, ctx.otMint);
 
     const tx = futClient.buildTransaction('execute_proposal', {
       accounts: {
@@ -875,8 +874,8 @@ const futarchyStepExecutors: Record<string, StepExecutor> = {
     const totalMinted = BigInt(otConfig?.total_minted?.toString() ?? '0');
 
     // Verify token balance
-    const { findAta: findAtaUtil } = await import('$lib/utils/pda');
-    const recipientAta = findAtaUtil(deployer.publicKey, ctx.otMint);
+    const { findAssociatedTokenAddressPda } = await import('@areal/sdk/pda');
+    const [recipientAta] = findAssociatedTokenAddressPda(deployer.publicKey, ctx.otMint);
     let balance = 0n;
     try {
       const info = await conn.getTokenAccountBalance(recipientAta);
@@ -993,7 +992,7 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
         rwt_mint: rwtMintKeypair.publicKey, usdc_mint: ctx.usdcMint,
         capital_accumulator_ata: capitalAccAta,
         areal_fee_destination_account: ctx.arealFeeAta,
-        token_program: TOKEN_PROGRAM_ID, system_program: SYSTEM_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID, system_program: SYSTEM_PROGRAM_ID,
         ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
       },
       args: {
@@ -1083,7 +1082,7 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
         user: deployer.publicKey, rwt_vault: ctx.rwtVaultPda, rwt_mint: ctx.rwtMint,
         user_deposit: ctx.userUsdcAta, user_rwt: ctx.userRwtAta,
         capital_acc: ctx.capitalAccAta, dao_fee_account: ctx.arealFeeAta,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { amount, min_rwt_out: 1 }
     });
@@ -1135,7 +1134,7 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
     const backingUsd = 100_000_000; // $100
     const tx = client.buildTransaction('admin_mint_rwt', {
       accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda,
-        rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: TOKEN_PROGRAM_ID },
+        rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: SPL_TOKEN_PROGRAM_ID },
       args: { rwt_amount: rwtAmount, backing_capital_usd: backingUsd }
     });
     const sig = await signAndSendTransaction(conn, tx, [deployer]);
@@ -1245,7 +1244,7 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
         accounts: { user: deployer.publicKey, rwt_vault: ctx.rwtVaultPda, rwt_mint: ctx.rwtMint,
           user_deposit: ctx.userUsdcAta, user_rwt: ctx.userRwtAta,
           capital_acc: ctx.capitalAccAta, dao_fee_account: ctx.arealFeeAta,
-          token_program: TOKEN_PROGRAM_ID },
+          token_program: SPL_TOKEN_PROGRAM_ID },
         args: { amount: 1_000_000, min_rwt_out: 1 }
       });
       await signAndSendTransaction(conn, mintTx, [deployer]);
@@ -1257,7 +1256,7 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
     try {
       const adminTx = client.buildTransaction('admin_mint_rwt', {
         accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda,
-          rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: TOKEN_PROGRAM_ID },
+          rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: SPL_TOKEN_PROGRAM_ID },
         args: { rwt_amount: 1_000_000, backing_capital_usd: 1_000_000 }
       });
       await signAndSendTransaction(conn, adminTx, [deployer]);
@@ -1325,7 +1324,7 @@ const rwtStepExecutors: Record<string, StepExecutor> = {
     try {
       const oldTx = client.buildTransaction('admin_mint_rwt', {
         accounts: { authority: deployer.publicKey, rwt_vault: ctx.rwtVaultPda,
-          rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: TOKEN_PROGRAM_ID },
+          rwt_mint: ctx.rwtMint, recipient_rwt: ctx.userRwtAta, token_program: SPL_TOKEN_PROGRAM_ID },
         args: { rwt_amount: 1, backing_capital_usd: 1 }
       });
       await signAndSendTransaction(conn, oldTx, [deployer]);
@@ -1506,7 +1505,7 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
         token_b_mint: ctx.mintB,
         vault_a: vaultA.publicKey,
         vault_b: vaultB.publicKey,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: {}
@@ -1546,7 +1545,7 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
         rwt_vault: ctx.rwtVaultPda,
         rwt_mint: ctx.rwtMint,
         recipient_rwt: deployerRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { rwt_amount: rwtAmount, backing_capital_usd: backingUsd }
     });
@@ -1592,7 +1591,7 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
         provider_token_b: getAtaAddress(deployer.publicKey, ctx.mintB),
         vault_a: ctx.vaultA,
         vault_b: ctx.vaultB,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: { amount_a: amountA, amount_b: amountB, min_shares: 0 }
@@ -1676,7 +1675,7 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
         pool_vault_out: a_to_b ? ctx.vaultB : ctx.vaultA,
         areal_fee_account: ctx.arealFeeAta,
         dex_program: dexProgId,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { amount_in: 10_000_000, min_amount_out: 1, a_to_b }
     });
@@ -1728,7 +1727,7 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
         pool_vault_out: a_to_b ? ctx.vaultB : ctx.vaultA,
         areal_fee_account: ctx.arealFeeAta,
         dex_program: dexProgId,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { amount_in: 5_000_000, min_amount_out: 1, a_to_b }
     });
@@ -1782,7 +1781,7 @@ const vaultSwapStepExecutors: Record<string, StepExecutor> = {
           pool_vault_out: a_to_b ? ctx.vaultB : ctx.vaultA,
           areal_fee_account: ctx.arealFeeAta,
           dex_program: dexProgId,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
         },
         args: { amount_in: 1_000_000, min_amount_out: 1, a_to_b }
       });
@@ -1948,7 +1947,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         token_b_mint: mintB,
         vault_a: vaultA.publicKey,
         vault_b: vaultB.publicKey,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: {}
@@ -2021,7 +2020,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         user_rwt: rwtAta,
         capital_acc: capitalAta,
         dao_fee_account: arealFeeAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: {
         amount: depositAmount,
@@ -2056,7 +2055,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         provider_token_b: getAtaAddress(deployer.publicKey, mintB),
         vault_a: (ctx as any).vaultA,
         vault_b: (ctx as any).vaultB,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: { amount_a: amountA, amount_b: amountB, min_shares: 0 }
@@ -2092,7 +2091,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         provider_token_b: getAtaAddress(deployer.publicKey, mintB),
         vault_a: (ctx as any).vaultA,
         vault_b: (ctx as any).vaultB,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: { amount_a: 50_000_000, amount_b: 50_000_000, min_shares: 0 }
@@ -2126,7 +2125,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         vault_in: (ctx as any).vaultA,
         vault_out: (ctx as any).vaultB,
         areal_fee_account: arealFeeAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { amount_in: 10_000_000, min_amount_out: 0, a_to_b: true }
     });
@@ -2157,7 +2156,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         vault_in: (ctx as any).vaultB,
         vault_out: (ctx as any).vaultA,
         areal_fee_account: arealFeeAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { amount_in: 5_000_000, min_amount_out: 0, a_to_b: false }
     });
@@ -2187,7 +2186,7 @@ const dexStepExecutors: Record<string, StepExecutor> = {
         provider_token_b: getAtaAddress(deployer.publicKey, mintB),
         vault_a: (ctx as any).vaultA,
         vault_b: (ctx as any).vaultB,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { shares_to_burn: sharesToBurn }
     });
@@ -2238,7 +2237,7 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
           { pubkey: deployer.publicKey, isSigner: false, isWritable: false },
           { pubkey: clTestMint, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         ],
         programId: ASSOCIATED_TOKEN_PROGRAM_ID,
         data: Buffer.from([1]), // CreateIdempotent (instruction index 1)
@@ -2304,7 +2303,7 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
         token_b_mint: mintB,
         vault_a: vaultAKeypair.publicKey,
         vault_b: vaultBKeypair.publicKey,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: { bin_step_bps: 10, initial_active_bin: 0 },
@@ -2342,7 +2341,7 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
         provider_token_b: getAtaAddress(deployer.publicKey, mintB),
         vault_a: (ctx as any).clVaultA,
         vault_b: (ctx as any).clVaultB,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: { amount_a: amountA, amount_b: amountB, min_shares: 0 },
@@ -2377,7 +2376,7 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
         vault_in: (ctx as any).clVaultA,
         vault_out: (ctx as any).clVaultB,
         areal_fee_account: arealFeeDest,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { amount_in: amountIn, min_amount_out: 0, a_to_b: true },
       remainingAccounts: [{ pubkey: binPda, isSigner: false, isWritable: true }],
@@ -2411,7 +2410,7 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
         vault_in: (ctx as any).clVaultB,
         vault_out: (ctx as any).clVaultA,
         areal_fee_account: arealFeeDest,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { amount_in: amountIn, min_amount_out: 0, a_to_b: false },
       remainingAccounts: [{ pubkey: binPda, isSigner: false, isWritable: true }],
@@ -2506,7 +2505,7 @@ const concentratedStepExecutors: Record<string, StepExecutor> = {
         provider_token_b: getAtaAddress(deployer.publicKey, mintB),
         vault_a: (ctx as any).clVaultA,
         vault_b: (ctx as any).clVaultB,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { shares_to_burn: sharesToBurn },
       remainingAccounts: [{ pubkey: binPda, isSigner: false, isWritable: true }],

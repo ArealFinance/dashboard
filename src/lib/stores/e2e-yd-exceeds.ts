@@ -32,10 +32,10 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import type { E2EStep } from './e2e-runner';
 import { connection } from './network';
 import {
-  TOKEN_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-} from '$lib/utils/pda';
+} from '@areal/sdk/network';
 import { createMint, createAta, getTokenBalance, getAtaAddress } from '$lib/utils/spl';
 import { signAndSendTransaction } from '$lib/utils/tx';
 import { expectYdError } from './e2e-error-parser';
@@ -98,19 +98,18 @@ export const ydExceedsExecutors: Record<string, StepExecutor> = {
     const mintTx = rwt.buildTransaction('admin_mint_rwt', {
       accounts: {
         authority: deployer.publicKey, rwt_vault: vaultPda,
-        rwt_mint: rwtMint, recipient_rwt: ata, token_program: TOKEN_PROGRAM_ID,
+        rwt_mint: rwtMint, recipient_rwt: ata, token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { rwt_amount: 1_000_000_000, backing_capital_usd: 1_000_000_000 },
     });
     await signAndSendTransaction(conn, mintTx, [deployer]);
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda } = await import('@areal/sdk/pda');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } = await import('@areal/sdk/pda');
     const yd = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
-    const [distributorPda] = findMerkleDistributorPda(ydProgramId, mintAddress);
-    const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, mintAddress);
+    const [distributorPda] = findMerkleDistributorPda(mintAddress, ydProgramId);
+    const [accumulatorPda] = findYdAccumulatorPda(mintAddress, ydProgramId);
     ctx.configPda = configPda;
     ctx.distributorPda = distributorPda;
     ctx.accumulatorPda = accumulatorPda;
@@ -148,7 +147,7 @@ export const ydExceedsExecutors: Record<string, StepExecutor> = {
           usdc_mint: usdcMint,
           reward_vault: ctx.rewardVault,
           accumulator_usdc_ata: ctx.accUsdcAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID,
         },
@@ -169,7 +168,7 @@ export const ydExceedsExecutors: Record<string, StepExecutor> = {
         depositor_token: ata,
         reward_vault: ctx.rewardVault,
         fee_account: ata,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { amount: gross },
     });
@@ -219,10 +218,10 @@ export const ydExceedsExecutors: Record<string, StepExecutor> = {
     await new Promise(r => setTimeout(r, 1500));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const yd = get(ydClient);
-    const [cs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [cs] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const tx = yd.buildTransaction('claim', {
       accounts: {
@@ -234,7 +233,7 @@ export const ydExceedsExecutors: Record<string, StepExecutor> = {
         claim_status: cs,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.feeAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
       },
       args: { cumulative_amount: ctx.inflatedCumulative, proof: [] },

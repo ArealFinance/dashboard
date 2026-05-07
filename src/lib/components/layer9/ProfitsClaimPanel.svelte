@@ -13,8 +13,7 @@
     TOKEN_KIND_USDC,
   } from '$lib/api/layer9';
   import { sendWalletTransaction } from '$lib/utils/tx';
-  import { findLpPositionPda } from '@areal/sdk/pda';
-  import { findAta } from '$lib/utils/pda';
+  import { findLpPositionPda, findAssociatedTokenAddressPda } from '@areal/sdk/pda';
   import { parseDecimal, isValidAddress } from '$lib/utils/format';
 
   type ToastType = 'success' | 'error' | 'info';
@@ -56,7 +55,7 @@
       if (!vault?.rwtMint) return;
       mint = new PublicKey(vault.rwtMint);
     }
-    const ata = findAta(nexusPdaForUi, mint);
+    const [ata] = findAssociatedTokenAddressPda(nexusPdaForUi, mint);
     nexusAtaBalanceLoading = true;
     try {
       const res = await $connection.getTokenAccountBalance(ata, 'confirmed');
@@ -131,7 +130,7 @@
 
     withdrawSubmitting = true;
     try {
-      const nexusAta = findAta(nexusPda, mint);
+      const [nexusAta] = findAssociatedTokenAddressPda(nexusPda, mint);
       const ix = await buildNexusWithdrawProfitsIx({
         dexProgramId,
         authority: w.publicKey,
@@ -190,8 +189,8 @@
       const tokenAMint = new PublicKey(pool.tokenAMint);
       const tokenBMint = new PublicKey(pool.tokenBMint);
       const [lpPda] = findLpPositionPda(poolPda, nexusPda, dexProgramId);
-      const nexusTokenA = findAta(nexusPda, tokenAMint);
-      const nexusTokenB = findAta(nexusPda, tokenBMint);
+      const [nexusTokenA] = findAssociatedTokenAddressPda(nexusPda, tokenAMint);
+      const [nexusTokenB] = findAssociatedTokenAddressPda(nexusPda, tokenBMint);
       const ix = await buildNexusClaimRewardsIx({
         dexProgramId,
         authority: w.publicKey,

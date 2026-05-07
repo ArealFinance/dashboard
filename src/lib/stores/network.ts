@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import { Connection } from '@solana/web3.js';
+import type { ClusterName as SdkCluster } from '@areal/sdk/network';
 import { browser } from '$app/environment';
 
 const STORAGE_KEY = 'areal_network';
@@ -56,6 +57,18 @@ function createNetworkStore() {
 export const network = createNetworkStore();
 export const clusterLabels = CLUSTER_LABELS;
 export const allClusters: Cluster[] = ['localnet', 'devnet', 'mainnet-beta'];
+
+/**
+ * Adapter: dashboard's `Cluster` ↔ SDK's `ClusterName`.
+ *
+ * The dashboard ships with the historical `'mainnet-beta'` literal whereas the
+ * SDK normalised mainnet to `'mainnet'`. This converter is the single bridge
+ * point so consumers of SDK utilities (USDC_MINTS, CLUSTER_URLS, …) can pass
+ * the dashboard cluster value through without leaking the divergence.
+ */
+export function toSdkCluster(c: Cluster): SdkCluster {
+  return c === 'mainnet-beta' ? 'mainnet' : c;
+}
 
 export const rpcEndpoint = derived(network, ($network) => RPC_ENDPOINTS[$network]);
 

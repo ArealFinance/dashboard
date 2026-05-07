@@ -13,8 +13,9 @@
   import { connection } from '$lib/stores/network';
   import { wallet } from '$lib/stores/wallet';
   import { fetchStreamConvertedEvents, type StreamConvertedEvent } from '$lib/api/layer8';
-  import { findAta, USDC_MINTS } from '$lib/utils/pda';
-  import { network } from '$lib/stores/network';
+  import { findAssociatedTokenAddressPda } from '@areal/sdk/pda';
+  import { USDC_MINTS } from '@areal/sdk/network';
+  import { network, toSdkCluster } from '$lib/stores/network';
   import { formatAmount, formatAddress, parseDecimal } from '$lib/utils/format';
   import {
     buildConvertToRwtIx,
@@ -52,7 +53,7 @@
   let swapFirst = true;
 
   $: walletState = $wallet;
-  $: usdcMint = USDC_MINTS[$network] ?? null;
+  $: usdcMint = USDC_MINTS[toSdkCluster($network)] ?? null;
 
   async function refresh(): Promise<void> {
     loading = true;
@@ -70,7 +71,7 @@
       for (const d of distState.distributors) {
         const otMintPk = new PublicKey(d.otMint);
         const [accumulatorPk] = getAccumulatorPda(otMintPk);
-        const usdcAta = findAta(accumulatorPk, usdcMint);
+        const [usdcAta] = findAssociatedTokenAddressPda(accumulatorPk, usdcMint);
         let balance = 0n;
         try {
           const info = await conn.getAccountInfo(usdcAta, 'confirmed');
