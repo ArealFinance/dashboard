@@ -6,15 +6,10 @@ import idl from '@areal/sdk/idl/yield-distribution.json';
 import {
   findYdConfigPda,
   findMerkleDistributorPda,
-  findYdAccumulatorPda
-} from '@areal/sdk/pda';
-// Note (Phase 4 R3): findClaimStatusPda kept on dashboard-local pda.ts
-// (programId-first signature). Migrating call sites to the SDK's
-// distributor-first signature is a follow-up cleanup.
-import {
-  findAta,
+  findYdAccumulatorPda,
   findClaimStatusPda
-} from '$lib/utils/pda';
+} from '@areal/sdk/pda';
+import { findAta } from '$lib/utils/pda';
 
 // Program ID — sourced from IDL (generated from contract's declare_id!).
 // Fail fast if missing rather than silently using a placeholder (ADR: HIGH-1).
@@ -174,7 +169,7 @@ export function getClaimStatusPda(
   distributor: PublicKey,
   claimant: PublicKey
 ): [PublicKey, number] {
-  return findClaimStatusPda(PROGRAM_ID, distributor, claimant);
+  return findClaimStatusPda(distributor, claimant, PROGRAM_ID);
 }
 
 // ------------- Main store -------------
@@ -285,7 +280,7 @@ function createYdStore() {
       claimant: PublicKey
     ): Promise<YdClaimStatusState | null> {
       const client = get(ydClient);
-      const [pda] = findClaimStatusPda(PROGRAM_ID, distributor, claimant);
+      const [pda] = findClaimStatusPda(distributor, claimant, PROGRAM_ID);
       try {
         const data = await client.fetch('ClaimStatus', pda);
         if (!data) return null;

@@ -14,10 +14,6 @@ import { PublicKey } from '@solana/web3.js';
  *   2. `findAta` — the SDK has `findAssociatedTokenAddressPda` returning
  *      `[PublicKey, number]`, while dashboard code expects a single
  *      `PublicKey`. Kept as a thin wrapper for back-compat.
- *   3. `findClaimStatusPda` — kept here because the dashboard's historical
- *      parameter order (`programId`-first) differs from the SDK's
- *      `distributor`-first order. Migrating call sites to the SDK signature
- *      is a follow-up cleanup.
  */
 
 /**
@@ -34,24 +30,6 @@ export const USDC_MINTS: Record<string, PublicKey> = {
   'mainnet-beta': new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'),
   devnet: new PublicKey('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
 };
-
-/**
- * Derive ClaimStatus PDA.
- * Seeds: ["claim_status", distributor, claimant]
- *
- * Legacy parameter order — the SDK's `findClaimStatusPda` takes
- * `(distributor, claimant, programId)` instead.
- */
-export function findClaimStatusPda(
-  programId: PublicKey,
-  distributor: PublicKey,
-  claimant: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('claim_status'), distributor.toBuffer(), claimant.toBuffer()],
-    programId
-  );
-}
 
 /**
  * Derive Associated Token Account address.

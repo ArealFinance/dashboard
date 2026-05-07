@@ -218,10 +218,10 @@ export const ydExceedsExecutors: Record<string, StepExecutor> = {
     await new Promise(r => setTimeout(r, 1500));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const yd = get(ydClient);
-    const [cs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [cs] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const tx = yd.buildTransaction('claim', {
       accounts: {

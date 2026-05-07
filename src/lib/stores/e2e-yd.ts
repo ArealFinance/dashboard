@@ -273,10 +273,10 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
-    const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const balBefore = await getTokenBalance(conn, ctx.aliceRwtAta);
 
@@ -318,10 +318,10 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
-    const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const balBefore = await getTokenBalance(conn, ctx.aliceRwtAta);
     const tx = client.buildTransaction('claim', {
@@ -376,9 +376,9 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     // Negative: claim must now fail.
     let claimRejected = false;
     try {
-      const { findClaimStatusPda } = await import('$lib/utils/pda');
+      const { findClaimStatusPda } = await import('@areal/sdk/pda');
       const { ydProgramId } = await import('./yd');
-      const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+      const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
       const tx2 = client.buildTransaction('claim', {
         accounts: {
           claimant: deployer.publicKey,
@@ -731,7 +731,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
       throw new Error('Previous steps incomplete');
     }
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const client = get(ydClient);
 
@@ -739,7 +739,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
     // Instead claim immediately and assert ≤ deposit{1,2}Net.
 
     // Alice claim
-    const [aliceCs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, ctx.alice.publicKey);
+    const [aliceCs] = findClaimStatusPda(ctx.distributorPda, ctx.alice.publicKey, ydProgramId);
     const aliceBefore = await getTokenBalance(conn, ctx.aliceRwtAta);
     const aliceTx = client.buildTransaction('claim', {
       accounts: {
@@ -765,7 +765,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
     ctx.aliceReceived = aliceAfter - aliceBefore;
 
     // Bob claim
-    const [bobCs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, ctx.bob.publicKey);
+    const [bobCs] = findClaimStatusPda(ctx.distributorPda, ctx.bob.publicKey, ydProgramId);
     const bobBefore = await getTokenBalance(conn, ctx.bobRwtAta);
     const bobTx = client.buildTransaction('claim', {
       accounts: {

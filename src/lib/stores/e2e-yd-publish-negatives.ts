@@ -243,7 +243,7 @@ export const ydPublishNegativesExecutors: Record<string, StepExecutor> = {
     }
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const { computeLeaf } = await import('$lib/utils/merkle');
     const yd = get(ydClient);
 
@@ -262,7 +262,7 @@ export const ydPublishNegativesExecutors: Record<string, StepExecutor> = {
 
     // 2. Wait for full vest + claim → total_claimed > 0.
     await new Promise(r => setTimeout(r, 2500));
-    const [claimStatusPda] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [claimStatusPda] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
     const claimTx = yd.buildTransaction('claim', {
       accounts: {
         claimant: deployer.publicKey,

@@ -222,10 +222,10 @@ export const ydVestingExecutors: Record<string, StepExecutor> = {
     if (delay > 0) await new Promise(r => setTimeout(r, delay));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const yd = get(ydClient);
-    const [cs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [cs] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const balBefore = await getTokenBalance(conn, ctx.feeAta);
     const tx = yd.buildTransaction('claim', {
@@ -275,10 +275,10 @@ export const ydVestingExecutors: Record<string, StepExecutor> = {
     if (delay > 0) await new Promise(r => setTimeout(r, delay));
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findClaimStatusPda } = await import('$lib/utils/pda');
+    const { findClaimStatusPda } = await import('@areal/sdk/pda');
     const conn = get(connection);
     const yd = get(ydClient);
-    const [cs] = findClaimStatusPda(ydProgramId, ctx.distributorPda, deployer.publicKey);
+    const [cs] = findClaimStatusPda(ctx.distributorPda, deployer.publicKey, ydProgramId);
 
     const balBefore = await getTokenBalance(conn, ctx.feeAta);
     const tx = yd.buildTransaction('claim', {

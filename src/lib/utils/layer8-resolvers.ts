@@ -32,6 +32,7 @@ import {
 } from '$lib/api/layer8';
 import {
   findLiquidityHoldingPda,
+  findClaimStatusPda,
   findLiquidityNexusPda,
   findOtTreasuryPda,
   findPoolStatePda,
@@ -41,14 +42,7 @@ import {
   findYdAccumulatorPda,
   findYdConfigPda,
 } from '@areal/sdk/pda';
-// Note (Phase 4 R3): findClaimStatusPda is kept on the dashboard-local
-// pda.ts because its historical parameter order (programId-first) differs
-// from the SDK's distributor-first convention. Migrating call sites to the
-// SDK signature is a follow-up cleanup, tracked separately.
-import {
-  findAta,
-  findClaimStatusPda,
-} from '$lib/utils/pda';
+import { findAta } from '$lib/utils/pda';
 
 /**
  * Program-ID bundle the resolvers depend on. Caller passes program IDs from
@@ -282,9 +276,9 @@ export async function resolveRwtClaimAccounts(
   }
 
   const [ydClaimStatusPda] = findClaimStatusPda(
-    ydProgramId,
     ydDistributorPda,
     rwtVaultPda,
+    ydProgramId,
   );
 
   return {
@@ -379,9 +373,9 @@ export async function resolveDexCompoundAccounts(
     throw new Error(`MerkleDistributor for OT ${otMint.toBase58()} not initialized`);
   }
   const [ydClaimStatusPda] = findClaimStatusPda(
-    ydProgramId,
     ydDistributorPda,
     poolPda,
+    ydProgramId,
   );
 
   return {
@@ -462,9 +456,9 @@ export async function resolveTreasuryClaimAccounts(
     );
   }
   const [ydClaimStatusPda] = findClaimStatusPda(
-    ydProgramId,
     ydDistributorPda,
     otTreasuryPda,
+    ydProgramId,
   );
 
   return {
