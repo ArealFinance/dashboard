@@ -151,9 +151,10 @@ export const ydContractNegativesExecutors: Record<string, StepExecutor> = {
     if (!ctx.configPda || !ctx.otMint || !ctx.rwtMint || !ctx.usdcMint) throw new Error('incomplete');
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findMerkleDistributorPda } = await import('@areal/sdk/pda');
+    const { findYdAccumulatorPda } = await import('$lib/utils/pda');
     const yd = get(ydClient);
-    const [distributorPda] = findMerkleDistributorPda(ydProgramId, ctx.otMint);
+    const [distributorPda] = findMerkleDistributorPda(ctx.otMint, ydProgramId);
     const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, ctx.otMint);
     const rewardVault = getAtaAddress(distributorPda, ctx.rwtMint);
     const accUsdcAta = getAtaAddress(accumulatorPda, ctx.usdcMint);
@@ -183,9 +184,10 @@ export const ydContractNegativesExecutors: Record<string, StepExecutor> = {
     if (!ctx.configPda || !ctx.otMint || !ctx.rwtMint || !ctx.usdcMint) throw new Error('incomplete');
     const conn = get(connection);
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findMerkleDistributorPda } = await import('@areal/sdk/pda');
+    const { findYdAccumulatorPda } = await import('$lib/utils/pda');
     const yd = get(ydClient);
-    const [distributorPda] = findMerkleDistributorPda(ydProgramId, ctx.otMint);
+    const [distributorPda] = findMerkleDistributorPda(ctx.otMint, ydProgramId);
     const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, ctx.otMint);
     const rewardVault = getAtaAddress(distributorPda, ctx.rwtMint);
     const accUsdcAta = getAtaAddress(accumulatorPda, ctx.usdcMint);

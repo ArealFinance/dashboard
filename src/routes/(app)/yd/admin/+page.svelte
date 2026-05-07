@@ -13,9 +13,8 @@
   import { connection } from '$lib/stores/network';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
-  import { findYdConfigPda } from '@areal/sdk/pda';
+  import { findYdConfigPda, findMerkleDistributorPda } from '@areal/sdk/pda';
   import {
-    findMerkleDistributorPda,
     findYdAccumulatorPda,
     TOKEN_PROGRAM_ID,
     SYSTEM_PROGRAM_ID,
@@ -110,7 +109,7 @@
       const rwtMint = new PublicKey(createRwtMint.trim());
       const usdcMint = new PublicKey(createUsdcMint.trim());
 
-      const [distributorPda] = findMerkleDistributorPda(ydProgramId, otMint);
+      const [distributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
       const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, otMint);
       const rewardVault = getAtaAddress(distributorPda, rwtMint);
       const accUsdcAta = getAtaAddress(accumulatorPda, usdcMint);
@@ -342,7 +341,7 @@
       const client = get(ydClient);
       const [configPda] = findYdConfigPda(ydProgramId);
       const otMint = new PublicKey(pubOtMint.trim());
-      const [distributorPda] = findMerkleDistributorPda(ydProgramId, otMint);
+      const [distributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
 
       const root = hexToBytes(pubRootHex.trim());
       if (root.length !== 32) throw new Error('Root must be 32 bytes');

@@ -3,14 +3,15 @@ import { PublicKey } from '@solana/web3.js';
 import { ArlexClient } from '@arlex/client';
 import { connection } from './network';
 import idl from '@areal/sdk/idl/yield-distribution.json';
-import { findYdConfigPda } from '@areal/sdk/pda';
-// Note (Phase 4 R3): findMerkleDistributorPda, findYdAccumulatorPda, and
-// findClaimStatusPda kept on dashboard-local pda.ts (programId-first
-// signature). Migrating call sites to the SDK's otMint-first signature is
-// a follow-up cleanup.
+import {
+  findYdConfigPda,
+  findMerkleDistributorPda
+} from '@areal/sdk/pda';
+// Note (Phase 4 R3): findYdAccumulatorPda and findClaimStatusPda kept on
+// dashboard-local pda.ts (programId-first signature). Migrating call sites
+// to the SDK's otMint-first signature is a follow-up cleanup.
 import {
   findAta,
-  findMerkleDistributorPda,
   findYdAccumulatorPda,
   findClaimStatusPda
 } from '$lib/utils/pda';
@@ -162,7 +163,7 @@ export function getYdConfigPda(): PublicKey {
 }
 
 export function getDistributorPda(otMint: PublicKey): [PublicKey, number] {
-  return findMerkleDistributorPda(PROGRAM_ID, otMint);
+  return findMerkleDistributorPda(otMint, PROGRAM_ID);
 }
 
 export function getAccumulatorPda(otMint: PublicKey): [PublicKey, number] {
@@ -251,7 +252,7 @@ function createYdStore() {
      */
     async loadDistributor(otMint: PublicKey): Promise<YdDistributorState | null> {
       const client = get(ydClient);
-      const [pda] = findMerkleDistributorPda(PROGRAM_ID, otMint);
+      const [pda] = findMerkleDistributorPda(otMint, PROGRAM_ID);
       try {
         const data = await client.fetch('MerkleDistributor', pda);
         if (!data) return null;

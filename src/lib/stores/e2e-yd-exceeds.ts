@@ -105,11 +105,11 @@ export const ydExceedsExecutors: Record<string, StepExecutor> = {
     await signAndSendTransaction(conn, mintTx, [deployer]);
 
     const { ydClient, ydProgramId } = await import('./yd');
-    const { findYdConfigPda } = await import('@areal/sdk/pda');
-    const { findMerkleDistributorPda, findYdAccumulatorPda } = await import('$lib/utils/pda');
+    const { findYdConfigPda, findMerkleDistributorPda } = await import('@areal/sdk/pda');
+    const { findYdAccumulatorPda } = await import('$lib/utils/pda');
     const yd = get(ydClient);
     const [configPda] = findYdConfigPda(ydProgramId);
-    const [distributorPda] = findMerkleDistributorPda(ydProgramId, mintAddress);
+    const [distributorPda] = findMerkleDistributorPda(mintAddress, ydProgramId);
     const [accumulatorPda] = findYdAccumulatorPda(ydProgramId, mintAddress);
     ctx.configPda = configPda;
     ctx.distributorPda = distributorPda;

@@ -14,12 +14,10 @@ import { PublicKey } from '@solana/web3.js';
  *   2. `findAta` — the SDK has `findAssociatedTokenAddressPda` returning
  *      `[PublicKey, number]`, while dashboard code expects a single
  *      `PublicKey`. Kept as a thin wrapper for back-compat.
- *   3. `findMerkleDistributorPda`, `findYdAccumulatorPda`,
- *      `findClaimStatusPda` — kept here because the dashboard's historical
- *      parameter order (`programId`-first) differs from the SDK's
- *      `otMint`/`distributor`-first order. Migrating ~25 call sites to the
- *      SDK signature is a follow-up cleanup; until then this file holds
- *      the legacy signature so behavior is preserved.
+ *   3. `findYdAccumulatorPda`, `findClaimStatusPda` — kept here because the
+ *      dashboard's historical parameter order (`programId`-first) differs
+ *      from the SDK's `otMint`/`distributor`-first order. Migrating call
+ *      sites to the SDK signature is a follow-up cleanup.
  */
 
 /**
@@ -38,28 +36,11 @@ export const USDC_MINTS: Record<string, PublicKey> = {
 };
 
 /**
- * Derive MerkleDistributor PDA.
- * Seeds: ["merkle_dist", ot_mint]
- *
- * Legacy parameter order — matches the dashboard's historical signature.
- * The SDK's `findMerkleDistributorPda` takes (otMint, programId) instead;
- * a follow-up will migrate call sites and remove this wrapper.
- */
-export function findMerkleDistributorPda(
-  programId: PublicKey,
-  otMint: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('merkle_dist'), otMint.toBuffer()],
-    programId
-  );
-}
-
-/**
  * Derive YD Accumulator PDA.
  * Seeds: ["accumulator", ot_mint]
  *
- * Legacy parameter order — see findMerkleDistributorPda above.
+ * Legacy parameter order — the SDK's `findYdAccumulatorPda` takes
+ * `(otMint, programId)` instead. Migrating call sites is a follow-up cleanup.
  */
 export function findYdAccumulatorPda(
   programId: PublicKey,
@@ -75,7 +56,8 @@ export function findYdAccumulatorPda(
  * Derive ClaimStatus PDA.
  * Seeds: ["claim_status", distributor, claimant]
  *
- * Legacy parameter order — see findMerkleDistributorPda above.
+ * Legacy parameter order — the SDK's `findClaimStatusPda` takes
+ * `(distributor, claimant, programId)` instead.
  */
 export function findClaimStatusPda(
   programId: PublicKey,

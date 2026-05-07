@@ -35,19 +35,18 @@ import {
   findLiquidityNexusPda,
   findOtTreasuryPda,
   findPoolStatePda,
+  findMerkleDistributorPda,
   findRwtDistConfigPda,
   findRwtVaultPda,
   findYdConfigPda,
 } from '@areal/sdk/pda';
-// Note (Phase 4 R3): findMerkleDistributorPda, findYdAccumulatorPda, and
-// findClaimStatusPda are kept on the dashboard-local pda.ts because their
-// historical parameter order (programId-first) differs from the SDK's
-// otMint-first convention. Migrating call sites to the SDK signature is a
-// follow-up cleanup, tracked separately.
+// Note (Phase 4 R3): findYdAccumulatorPda and findClaimStatusPda are kept on
+// the dashboard-local pda.ts because their historical parameter order
+// (programId-first) differs from the SDK's convention. Migrating call sites
+// to the SDK signature is a follow-up cleanup, tracked separately.
 import {
   findAta,
   findClaimStatusPda,
-  findMerkleDistributorPda,
   findYdAccumulatorPda,
 } from '$lib/utils/pda';
 
@@ -175,7 +174,7 @@ export async function resolveConvertAccounts(
   }
 
   // 2. MerkleDistributor — supplies reward_vault.
-  const [distributorPda] = findMerkleDistributorPda(ydProgramId, otMint);
+  const [distributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
   const distributor = await readMerkleDistributor(connection, distributorPda);
   if (!distributor) {
     throw new Error(`MerkleDistributor for OT ${otMint.toBase58()} not initialized`);
@@ -276,7 +275,7 @@ export async function resolveRwtClaimAccounts(
   const rwtClaimAta = findAta(rwtVaultPda, new PublicKey(rwtVault.rwtMint));
 
   const [ydConfigPda] = findYdConfigPda(ydProgramId);
-  const [ydDistributorPda] = findMerkleDistributorPda(ydProgramId, otMint);
+  const [ydDistributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
   const ydDistributor = await readMerkleDistributor(connection, ydDistributorPda);
   if (!ydDistributor) {
     throw new Error(`MerkleDistributor for OT ${otMint.toBase58()} not initialized`);
@@ -374,7 +373,7 @@ export async function resolveDexCompoundAccounts(
 
   const poolPda = new PublicKey(pool.pda);
   const [ydConfigPda] = findYdConfigPda(ydProgramId);
-  const [ydDistributorPda] = findMerkleDistributorPda(ydProgramId, otMint);
+  const [ydDistributorPda] = findMerkleDistributorPda(otMint, ydProgramId);
   const ydDistributor = await readMerkleDistributor(connection, ydDistributorPda);
   if (!ydDistributor) {
     throw new Error(`MerkleDistributor for OT ${otMint.toBase58()} not initialized`);
@@ -455,7 +454,7 @@ export async function resolveTreasuryClaimAccounts(
   const treasuryRwtAta = findAta(otTreasuryPda, rwtMint);
 
   const [ydConfigPda] = findYdConfigPda(ydProgramId);
-  const [ydDistributorPda] = findMerkleDistributorPda(ydProgramId, ydOtMint);
+  const [ydDistributorPda] = findMerkleDistributorPda(ydOtMint, ydProgramId);
   const ydDistributor = await readMerkleDistributor(connection, ydDistributorPda);
   if (!ydDistributor) {
     throw new Error(
