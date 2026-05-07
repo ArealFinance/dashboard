@@ -14,8 +14,8 @@
   import { wallet } from '$lib/stores/wallet';
   import { fetchStreamConvertedEvents, type StreamConvertedEvent } from '$lib/api/layer8';
   import { findAssociatedTokenAddressPda } from '@areal/sdk/pda';
-  import { USDC_MINTS } from '$lib/utils/pda';
-  import { network } from '$lib/stores/network';
+  import { USDC_MINTS } from '@areal/sdk/network';
+  import { network, toSdkCluster } from '$lib/stores/network';
   import { formatAmount, formatAddress, parseDecimal } from '$lib/utils/format';
   import {
     buildConvertToRwtIx,
@@ -53,7 +53,7 @@
   let swapFirst = true;
 
   $: walletState = $wallet;
-  $: usdcMint = USDC_MINTS[$network] ?? null;
+  $: usdcMint = USDC_MINTS[toSdkCluster($network)] ?? null;
 
   async function refresh(): Promise<void> {
     loading = true;

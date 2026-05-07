@@ -12,8 +12,8 @@ import {
   findOtTreasuryPda,
   findAssociatedTokenAddressPda
 } from '@areal/sdk/pda';
-import { USDC_MINTS } from '$lib/utils/pda';
-import type { Cluster } from './network';
+import { USDC_MINTS } from '@areal/sdk/network';
+import { toSdkCluster, type Cluster } from './network';
 
 // Program ID — will be updated after deployment
 const PROGRAM_ID = new PublicKey(idl.metadata?.address ?? '11111111111111111111111111111112');
@@ -167,7 +167,7 @@ export function createOtStore(mintAddress: string) {
 
       // Fetch revenue ATA balance
       let revenueAtaBalance = 0n;
-      const usdcMint = USDC_MINTS[cluster];
+      const usdcMint = USDC_MINTS[toSdkCluster(cluster)];
       if (usdcMint) {
         const [revenueAta] = findAssociatedTokenAddressPda(revenuePda, usdcMint);
         try {

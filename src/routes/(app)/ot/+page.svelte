@@ -17,8 +17,9 @@
   } from '@areal/sdk/pda';
   import {
     SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+    USDC_MINTS
   } from '@areal/sdk/network';
-  import { USDC_MINTS } from '$lib/utils/pda';
+  import { toSdkCluster } from '$lib/stores/network';
 
   // Initialize form state
   let showInitForm = false;
@@ -58,7 +59,7 @@
       const cluster = get(network);
 
       const otMint = new PublicKey(formMint);
-      const usdcMint = USDC_MINTS[cluster];
+      const usdcMint = USDC_MINTS[toSdkCluster(cluster)];
       if (!usdcMint) throw new Error('USDC mint not configured for this cluster');
 
       // Derive PDAs

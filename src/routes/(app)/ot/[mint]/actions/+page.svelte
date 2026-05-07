@@ -18,8 +18,9 @@
   } from '@areal/sdk/pda';
   import {
     SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+    USDC_MINTS
   } from '@areal/sdk/network';
-  import { USDC_MINTS } from '$lib/utils/pda';
+  import { toSdkCluster } from '$lib/stores/network';
   import type { OtState } from '$lib/stores/ot';
   import type { Writable } from 'svelte/store';
 
@@ -139,7 +140,7 @@
 
       const [revenuePda] = findRevenueAccountPda(otMint, programId);
       const [revenueConfigPda] = findRevenueConfigPda(otMint, programId);
-      const usdcMint = USDC_MINTS[cluster];
+      const usdcMint = USDC_MINTS[toSdkCluster(cluster)];
       if (!usdcMint) throw new Error('USDC mint not configured');
 
       const [revenueAta] = findAssociatedTokenAddressPda(revenuePda, usdcMint);

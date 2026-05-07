@@ -11,10 +11,9 @@
   import TxStatus from '$lib/components/TxStatus.svelte';
   import { bytesToBase58, base58ToBytes, trimNullBytes, isValidAddress, stringToFixedBytes, formatAddress } from '$lib/utils/format';
   import { findOtGovernancePda, findRevenueConfigPda, findOtTreasuryPda, findAssociatedTokenAddressPda } from '@areal/sdk/pda';
-  import { SPL_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
-  import { USDC_MINTS } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID, USDC_MINTS } from '@areal/sdk/network';
   import type { OtState } from '$lib/stores/ot';
-  import type { Cluster } from '$lib/stores/network';
+  import { toSdkCluster, type Cluster } from '$lib/stores/network';
   import type { Writable } from 'svelte/store';
 
   const otStore = getContext<{ subscribe: Writable<OtState>['subscribe']; refresh: () => Promise<void> }>('otStore');
@@ -87,7 +86,7 @@
     // Treasury USDC ATA
     try {
       const [treasuryPda] = findOtTreasuryPda(otMint, programId);
-      const usdcMint = USDC_MINTS[cluster];
+      const usdcMint = USDC_MINTS[toSdkCluster(cluster)];
       if (usdcMint) {
         const [treasuryAta] = findAssociatedTokenAddressPda(treasuryPda, usdcMint);
         options.push({
