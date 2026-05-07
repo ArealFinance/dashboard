@@ -15,10 +15,10 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import type { E2EStep } from './e2e-runner';
 import { connection } from './network';
 import {
-  TOKEN_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID
-} from '$lib/utils/pda';
+} from '@areal/sdk/network';
 import { createMint, createAta, mintTo, getTokenBalance, getAtaAddress } from '$lib/utils/spl';
 import { signAndSendTransaction } from '$lib/utils/tx';
 
@@ -113,7 +113,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
     const tx = client.buildTransaction('admin_mint_rwt', {
       accounts: {
         authority: deployer.publicKey, rwt_vault: vaultPda,
-        rwt_mint: ctx.rwtMint, recipient_rwt: ata, token_program: TOKEN_PROGRAM_ID
+        rwt_mint: ctx.rwtMint, recipient_rwt: ata, token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { rwt_amount: 2_000_000_000, backing_capital_usd: 2_000_000_000 } // mint 2000 RWT
     });
@@ -185,7 +185,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         usdc_mint: ctx.usdcMint,
         reward_vault: rewardVault,
         accumulator_usdc_ata: accUsdcAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
         ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
       },
@@ -216,7 +216,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         depositor_token: ctx.feeAta, // deployer's RWT ATA = source
         reward_vault: ctx.rewardVault,
         fee_account: ctx.feeAta,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { amount }
     });
@@ -290,7 +290,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         claim_status: claimStatusPda,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.aliceRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID
       },
       args: { cumulative_amount: ctx.netFunded, proof: [] },
@@ -334,7 +334,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         claim_status: claimStatusPda,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.aliceRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID
       },
       args: { cumulative_amount: ctx.netFunded, proof: [] },
@@ -367,7 +367,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
         ot_mint: ctx.otMint,
         reward_vault: ctx.rewardVault,
         unclaimed_destination: ctx.unclaimedDest,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: {}
     });
@@ -389,7 +389,7 @@ export const ydBasicExecutors: Record<string, StepExecutor> = {
           claim_status: claimStatusPda,
           reward_vault: ctx.rewardVault,
           claimant_token: ctx.unclaimedDest,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID
         },
         args: { cumulative_amount: ctx.netFunded ?? 0n, proof: [] }
@@ -500,7 +500,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
     const tx = client.buildTransaction('admin_mint_rwt', {
       accounts: {
         authority: deployer.publicKey, rwt_vault: vaultPda,
-        rwt_mint: ctx.rwtMint, recipient_rwt: ctx.aliceRwtAta, token_program: TOKEN_PROGRAM_ID
+        rwt_mint: ctx.rwtMint, recipient_rwt: ctx.aliceRwtAta, token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { rwt_amount: 2_000_000_000, backing_capital_usd: 2_000_000_000 }
     });
@@ -566,7 +566,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
           usdc_mint: ctx.usdcMint,
           reward_vault: rewardVault,
           accumulator_usdc_ata: accUsdcAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },
@@ -601,7 +601,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         depositor_token: ctx.feeAta,
         reward_vault: ctx.rewardVault,
         fee_account: ctx.feeAta,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { amount: amount1 }
     });
@@ -628,7 +628,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         { pubkey: ctx.bobOtAta, isSigner: false, isWritable: true },
         { pubkey: ctx.alice.publicKey, isSigner: true, isWritable: false }
       ],
-      programId: TOKEN_PROGRAM_ID,
+      programId: SPL_TOKEN_PROGRAM_ID,
       data
     });
     const tx = new Transaction().add(ix);
@@ -663,7 +663,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         depositor_token: ctx.feeAta,
         reward_vault: ctx.rewardVault,
         fee_account: ctx.feeAta,
-        token_program: TOKEN_PROGRAM_ID
+        token_program: SPL_TOKEN_PROGRAM_ID
       },
       args: { amount: amount2 }
     });
@@ -751,7 +751,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         claim_status: aliceCs,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.aliceRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID
       },
       args: {
@@ -777,7 +777,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
         claim_status: bobCs,
         reward_vault: ctx.rewardVault,
         claimant_token: ctx.bobRwtAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID
       },
       args: {
@@ -811,7 +811,7 @@ export const ydFairnessExecutors: Record<string, StepExecutor> = {
           claim_status: aliceCs,
           reward_vault: ctx.rewardVault,
           claimant_token: ctx.aliceRwtAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID
         },
         args: {

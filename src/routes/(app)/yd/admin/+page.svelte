@@ -15,10 +15,10 @@
   import { getAtaAddress } from '$lib/utils/spl';
   import { findYdConfigPda, findMerkleDistributorPda, findYdAccumulatorPda } from '@areal/sdk/pda';
   import {
-    TOKEN_PROGRAM_ID,
+    SPL_TOKEN_PROGRAM_ID,
     SYSTEM_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID
-  } from '$lib/utils/pda';
+  } from '@areal/sdk/network';
   import TxStatus from '$lib/components/TxStatus.svelte';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import { ArrowLeft } from 'lucide-svelte';
@@ -126,7 +126,7 @@
           usdc_mint: usdcMint,
           reward_vault: rewardVault,
           accumulator_usdc_ata: accUsdcAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },
@@ -308,7 +308,7 @@
           ot_mint: otMint,
           reward_vault: rewardVault,
           unclaimed_destination: unclaimedDest,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         args: {}
       });

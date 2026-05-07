@@ -5,7 +5,8 @@
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
   import { findRwtVaultPda, findRwtDistConfigPda } from '@areal/sdk/pda';
-  import { TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, USDC_MINTS } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
+  import { USDC_MINTS } from '$lib/utils/pda';
   import { network } from '$lib/stores/network';
   import { formatAddress } from '$lib/utils/format';
   import { signAndSendTransaction } from '$lib/utils/tx';
@@ -77,7 +78,7 @@
           usdc_mint: usdcMint,
           capital_accumulator_ata: capitalAccAta,
           areal_fee_destination_account: feeAta,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },
@@ -126,7 +127,7 @@
           user_rwt: userRwtAta,
           capital_acc: capitalAcc,
           dao_fee_account: daoFeeAcc,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         args: { amount: mintAmountLamports, min_rwt_out: 1 }
       });

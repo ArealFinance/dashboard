@@ -8,7 +8,8 @@
   import { futarchyClient, futarchyProgramId, PROPOSAL_TYPES, PROPOSAL_STATUSES } from '$lib/stores/futarchy';
   import { programId as otProgramId } from '$lib/stores/ot';
   import { findOtGovernancePda, findOtConfigPda, findOtTreasuryPda, findRevenueConfigPda } from '@areal/sdk/pda';
-  import { findAta, TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
+  import { findAta } from '$lib/utils/pda';
   import { bytesToBase58, formatTimestamp, isZeroAddress, formatAddress } from '$lib/utils/format';
   import { sendWalletTransaction } from '$lib/utils/tx';
   import { connection } from '$lib/stores/network';
@@ -104,7 +105,7 @@
           { pubkey: otMint, isWritable: true, isSigner: false },
           { pubkey: recipientAta, isWritable: true, isSigner: false },
           { pubkey: recipient, isWritable: false, isSigner: false },
-          { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+          { pubkey: SPL_TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
           { pubkey: SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false },
           { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
         ];
@@ -121,7 +122,7 @@
           { pubkey: treasuryAta, isWritable: true, isSigner: false },
           { pubkey: destAta, isWritable: true, isSigner: false },
           { pubkey: tokenMintPk, isWritable: false, isSigner: false },
-          { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+          { pubkey: SPL_TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
         ];
       } else if (proposal.proposalType === 2) {
         // UpdateDestinations — requires temp data account (not handled in UI yet)

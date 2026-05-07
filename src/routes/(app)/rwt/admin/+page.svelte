@@ -7,7 +7,7 @@
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
   import { findRwtVaultPda, findRwtDistConfigPda, findDexConfigPda, findPoolStatePda } from '@areal/sdk/pda';
-  import { TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
   import TxStatus from '$lib/components/TxStatus.svelte';
@@ -70,7 +70,7 @@
     try {
       const conn = get(connection);
       const [vaultPda] = findRwtVaultPda(rwtProgramId);
-      const resp = await conn.getTokenAccountsByOwner(vaultPda, { programId: TOKEN_PROGRAM_ID });
+      const resp = await conn.getTokenAccountsByOwner(vaultPda, { programId: SPL_TOKEN_PROGRAM_ID });
       vaultBalances = resp.value.map((item: any) => {
         const data = item.account.data;
         const mint = new PublicKey(data.slice(0, 32)).toBase58();
@@ -150,7 +150,7 @@
           pool_vault_out: poolVaultOut,
           areal_fee_account: arealFeeAta,
           dex_program: dexProgramId,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
         },
         args: { amount_in: amountIn, min_amount_out: minAmountOut, a_to_b }
       });
@@ -195,7 +195,7 @@
           rwt_vault: vaultPda,
           rwt_mint: rwtMint,
           recipient_rwt: recipientRwt,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         args: {
           rwt_amount: Math.floor(adminRwtNum * 1_000_000),

@@ -6,7 +6,7 @@
   import { connection } from '$lib/stores/network';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
-  import { TOKEN_PROGRAM_ID } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
   import TxStatus from '$lib/components/TxStatus.svelte';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import { ArrowLeft } from 'lucide-svelte';
@@ -80,7 +80,7 @@
           depositor_token: depositorToken,
           reward_vault: rewardVault,
           fee_account: feeAccount,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         args: { amount: amountLamports }
       });

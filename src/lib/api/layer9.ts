@@ -113,10 +113,9 @@ export const discClaimLpFees = (): Promise<Uint8Array> =>
 // Constants (program-side)
 // -----------------------------------------------------------------------------
 
-/** SPL Token program ID. */
-export const SPL_TOKEN_PROGRAM_ID = new PublicKey(
-  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
-);
+/** SPL Token program ID. Re-exported from SDK for legacy callers. */
+import { SPL_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
+export { SPL_TOKEN_PROGRAM_ID };
 
 /** System program ID. */
 export const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');

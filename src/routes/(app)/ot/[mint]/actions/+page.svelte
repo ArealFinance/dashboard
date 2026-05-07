@@ -16,8 +16,10 @@
     findOtGovernancePda, findOtTreasuryPda
   } from '@areal/sdk/pda';
   import {
+    SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+  } from '@areal/sdk/network';
+  import {
     findAta,
-    TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
     USDC_MINTS
   } from '$lib/utils/pda';
   import type { OtState } from '$lib/stores/ot';
@@ -97,7 +99,7 @@
           recipient_token_account: recipientAta,
           recipient: recipient,
           payer: $publicKey,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
           ata_program: ASSOCIATED_TOKEN_PROGRAM_ID
         },
@@ -176,7 +178,7 @@
           revenue_token_account: revenueAta,
           revenue_config: revenueConfigPda,
           areal_fee_account: feeDestPk,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         remainingAccounts,
         computeUnits: 300_000
@@ -231,7 +233,7 @@
           treasury_token_account: selectedTa.address,
           destination_token_account: destination,
           token_mint: selectedTa.mint,
-          token_program: TOKEN_PROGRAM_ID
+          token_program: SPL_TOKEN_PROGRAM_ID
         },
         args: { amount: rawAmount },
         computeUnits: 200_000

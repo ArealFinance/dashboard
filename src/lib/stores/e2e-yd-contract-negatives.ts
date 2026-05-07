@@ -32,10 +32,10 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import type { E2EStep } from './e2e-runner';
 import { connection } from './network';
 import {
-  TOKEN_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
   SYSTEM_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-} from '$lib/utils/pda';
+} from '@areal/sdk/network';
 import { createMint, createAta, getTokenBalance, getAtaAddress } from '$lib/utils/spl';
 import { signAndSendTransaction } from '$lib/utils/tx';
 import { expectYdError } from './e2e-error-parser';
@@ -115,7 +115,7 @@ export const ydContractNegativesExecutors: Record<string, StepExecutor> = {
     const mintTx = rwt.buildTransaction('admin_mint_rwt', {
       accounts: {
         authority: deployer.publicKey, rwt_vault: vaultPda,
-        rwt_mint: rwtMint, recipient_rwt: ata, token_program: TOKEN_PROGRAM_ID,
+        rwt_mint: rwtMint, recipient_rwt: ata, token_program: SPL_TOKEN_PROGRAM_ID,
       },
       args: { rwt_amount: 1_000_000_000, backing_capital_usd: 1_000_000_000 },
     });
@@ -169,7 +169,7 @@ export const ydContractNegativesExecutors: Record<string, StepExecutor> = {
         usdc_mint: ctx.usdcMint,
         reward_vault: rewardVault,
         accumulator_usdc_ata: accUsdcAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
         ata_program: ASSOCIATED_TOKEN_PROGRAM_ID,
       },
@@ -209,7 +209,7 @@ export const ydContractNegativesExecutors: Record<string, StepExecutor> = {
         usdc_mint: ctx.usdcMint,
         reward_vault: rewardVault,
         accumulator_usdc_ata: accUsdcAta,
-        token_program: TOKEN_PROGRAM_ID,
+        token_program: SPL_TOKEN_PROGRAM_ID,
         system_program: SYSTEM_PROGRAM_ID,
         ata_program: ASSOCIATED_TOKEN_PROGRAM_ID,
       },

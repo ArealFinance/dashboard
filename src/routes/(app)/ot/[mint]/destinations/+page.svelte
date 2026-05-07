@@ -11,7 +11,8 @@
   import TxStatus from '$lib/components/TxStatus.svelte';
   import { bytesToBase58, base58ToBytes, trimNullBytes, isValidAddress, stringToFixedBytes, formatAddress } from '$lib/utils/format';
   import { findOtGovernancePda, findRevenueConfigPda, findOtTreasuryPda } from '@areal/sdk/pda';
-  import { findAta, TOKEN_PROGRAM_ID, USDC_MINTS } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
+  import { findAta, USDC_MINTS } from '$lib/utils/pda';
   import type { OtState } from '$lib/stores/ot';
   import type { Cluster } from '$lib/stores/network';
   import type { Writable } from 'svelte/store';

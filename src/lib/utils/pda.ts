@@ -1,27 +1,20 @@
 import { PublicKey } from '@solana/web3.js';
+import { SPL_TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
 
 /**
- * Dashboard-local PDA helpers and program-ID constants.
+ * Dashboard-local PDA helpers.
  *
- * Phase 4 R3 — most PDA derivers have been moved to `@areal/sdk/pda`.
+ * Phase 4 R3 — most PDA derivers and constants have been moved to the SDK.
  * What remains here:
  *
- *   1. Well-known program IDs (TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID,
- *      ASSOCIATED_TOKEN_PROGRAM_ID, USDC_MINTS) — these are constants
- *      consumed widely by stores and route components. The SDK exposes
- *      similar via `@areal/sdk` (root) under slightly different names
- *      (e.g. SPL_TOKEN_PROGRAM_ID); call sites can be migrated piecemeal.
+ *   1. `USDC_MINTS` — kept as a dashboard-local map because the dashboard's
+ *      cluster type is `'localnet' | 'devnet' | 'mainnet-beta'` while the
+ *      SDK uses `'mainnet'`. Migration is tracked separately and bridged
+ *      via a cluster adapter (see B.3c).
  *   2. `findAta` — the SDK has `findAssociatedTokenAddressPda` returning
  *      `[PublicKey, number]`, while dashboard code expects a single
  *      `PublicKey`. Kept as a thin wrapper for back-compat.
  */
-
-/**
- * Well-known program IDs.
- */
-export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-export const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');
-export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 
 /**
  * Known USDC mints per cluster.
@@ -37,7 +30,7 @@ export const USDC_MINTS: Record<string, PublicKey> = {
  */
 export function findAta(owner: PublicKey, mint: PublicKey): PublicKey {
   const [ata] = PublicKey.findProgramAddressSync(
-    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    [owner.toBuffer(), SPL_TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
   return ata;

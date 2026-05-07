@@ -7,7 +7,7 @@ import {
   TransactionInstruction
 } from '@solana/web3.js';
 import { signAndSendTransaction } from './tx';
-import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from './pda';
+import { SPL_TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
 
 /**
  * Create a new SPL Token mint.
@@ -30,7 +30,7 @@ export async function createMint(
     newAccountPubkey: mintKeypair.publicKey,
     lamports,
     space: 82,
-    programId: TOKEN_PROGRAM_ID
+    programId: SPL_TOKEN_PROGRAM_ID
   });
 
   // InitializeMint2 layout: [20, decimals(1), mint_authority(32), freeze_option(1), freeze_authority(32)]
@@ -42,7 +42,7 @@ export async function createMint(
 
   const initMintIx = new TransactionInstruction({
     keys: [{ pubkey: mintKeypair.publicKey, isSigner: false, isWritable: true }],
-    programId: TOKEN_PROGRAM_ID,
+    programId: SPL_TOKEN_PROGRAM_ID,
     data
   });
 
@@ -85,7 +85,7 @@ export async function createAta(
       { pubkey: owner, isSigner: false, isWritable: false },
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
+      { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
     ],
     programId: ASSOCIATED_TOKEN_PROGRAM_ID,
     data: Buffer.alloc(0)
@@ -119,7 +119,7 @@ export async function mintTo(
       { pubkey: destination, isSigner: false, isWritable: true },
       { pubkey: mintAuthority.publicKey, isSigner: true, isWritable: false }
     ],
-    programId: TOKEN_PROGRAM_ID,
+    programId: SPL_TOKEN_PROGRAM_ID,
     data
   });
 

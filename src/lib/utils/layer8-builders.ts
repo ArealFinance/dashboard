@@ -19,11 +19,10 @@ import {
   SystemProgram,
   TransactionInstruction,
 } from '@solana/web3.js';
+import { SPL_TOKEN_PROGRAM_ID } from '@areal/sdk/network';
 import { hexToBytes } from '$lib/utils/merkle';
 
-export const SPL_TOKEN_PROGRAM_ID = new PublicKey(
-  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
-);
+export { SPL_TOKEN_PROGRAM_ID };
 
 // -----------------------------------------------------------------------------
 // Discriminators (sha256("global:<ix>")[..8]) computed lazily

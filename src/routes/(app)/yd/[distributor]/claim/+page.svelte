@@ -12,7 +12,7 @@
   import { connection } from '$lib/stores/network';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import { getAtaAddress } from '$lib/utils/spl';
-  import { TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID } from '@areal/sdk/network';
   import TxStatus from '$lib/components/TxStatus.svelte';
   import CopyAddress from '$lib/components/CopyAddress.svelte';
   import { ArrowLeft } from 'lucide-svelte';
@@ -120,7 +120,7 @@
           claim_status: claimStatusPda,
           reward_vault: rewardVault,
           claimant_token: claimantToken,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID
         },
         args: { cumulative_amount: cumulativeNum, proof: proofArg },

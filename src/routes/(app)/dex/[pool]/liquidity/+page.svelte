@@ -6,7 +6,7 @@
   import { devKeys } from '$lib/stores/devkeys';
   import { connection } from '$lib/stores/network';
   import { findDexConfigPda, findPoolStatePda, findLpPositionPda, findBinArrayPda } from '@areal/sdk/pda';
-  import { TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID } from '$lib/utils/pda';
+  import { SPL_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID } from '@areal/sdk/network';
   import { getAtaAddress } from '$lib/utils/spl';
   import { signAndSendTransaction } from '$lib/utils/tx';
   import TxStatus from '$lib/components/TxStatus.svelte';
@@ -65,7 +65,7 @@
           provider_token_b: getAtaAddress(deployer.publicKey, mintB),
           vault_a: new PublicKey(pool.vaultA),
           vault_b: new PublicKey(pool.vaultB),
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
         },
         args: {
@@ -117,7 +117,7 @@
           provider_token_b: getAtaAddress(deployer.publicKey, mintB),
           vault_a: new PublicKey(pool.vaultA),
           vault_b: new PublicKey(pool.vaultB),
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
         },
         args: {
           shares_to_burn: removeShares,
@@ -166,7 +166,7 @@
           vault_a: new PublicKey(pool.vaultA),
           vault_b: new PublicKey(pool.vaultB),
           areal_fee_account: arealFee,
-          token_program: TOKEN_PROGRAM_ID,
+          token_program: SPL_TOKEN_PROGRAM_ID,
           system_program: SYSTEM_PROGRAM_ID,
         },
         args: {
