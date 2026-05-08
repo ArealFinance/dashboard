@@ -26,6 +26,7 @@
   import { network } from '$lib/stores/network';
   import { systemOverview } from '$lib/stores/systemOverview';
 
+  import ProtocolSummaryWidget from '$lib/components/ProtocolSummaryWidget.svelte';
   import SystemHealth from '$lib/components/SystemHealth.svelte';
   import BotHeartbeats from '$lib/components/BotHeartbeats.svelte';
   import AuthorityChain from '$lib/components/AuthorityChain.svelte';
@@ -72,6 +73,10 @@
       <span>Refresh</span>
     </button>
   </header>
+
+  <!-- Protocol Analytics (12.3.3) — protocol-wide KPI subhero, sits above
+       the numbered System Overview sections. -->
+  <ProtocolSummaryWidget />
 
   <!-- 1. System Health -->
   <section class="overview-section section-system-health" id="system-health">
