@@ -133,7 +133,15 @@ function attachListenerToCurrentClient(entry: PendingListener): void {
   if (!state.client) return;
   // Already attached to this client?
   if (entry.detach) return;
-  entry.detach = state.client.on(entry.channel, entry.listener);
+  // Wrap the consumer listener so we can sync `connected` after every
+  // payload arrival (replaces the per-second heartbeat poll). Cheap —
+  // payload events fire at SDK cadence (30s protocol / 60s pool), not
+  // hot-path frequency.
+  const wrapped = (payload: RealtimeEventMap[typeof entry.channel]) => {
+    entry.listener(payload);
+    syncConnected();
+  };
+  entry.detach = state.client.on(entry.channel, wrapped);
 }
 
 function detachListenerFromCurrentClient(entry: PendingListener): void {
@@ -150,26 +158,25 @@ function detachAllWrapperListeners(): void {
 }
 
 /**
- * Snapshot the SDK client's `connected` flag into our writable store. Polls
- * via the same channels the SDK exposes; we tick on every ack/disconnect
- * and on a 1s heartbeat for visual feedback.
+ * Mirror the SDK client's `connected` flag into our writable store.
+ *
+ * Earlier this was driven by a 1Hz `setInterval` heartbeat — the architect
+ * review (12.3.3) flagged that as anti-pattern: per-second polling in a
+ * realtime client is exactly the failure-mode the realtime layer is meant
+ * to remove. We now sync only on meaningful state transitions:
+ *   - `attachSyntheticListeners` initial hook (covers `stale` / `live` /
+ *     `connect_error` — each implies a state change)
+ *   - every consumer-facing payload event (`pool_snapshot`,
+ *     `protocol_summary_tick`, `transaction_indexed`)
+ *   - explicit `disconnect` in `teardown()`
+ *
+ * The `connected` flag may lag reality by up to one event interval (~30s
+ * for the `protocol` room) on the very first connect — acceptable because
+ * no UI consumer relies on it for safety; widget loading-states cover the
+ * cold-start window.
  */
-let connectedTickInterval: ReturnType<typeof setInterval> | null = null;
-
 function syncConnected(): void {
   connected.set(state.client?.connected ?? false);
-}
-
-function startConnectedHeartbeat(): void {
-  if (connectedTickInterval) clearInterval(connectedTickInterval);
-  connectedTickInterval = setInterval(syncConnected, 1_000);
-}
-
-function stopConnectedHeartbeat(): void {
-  if (connectedTickInterval) {
-    clearInterval(connectedTickInterval);
-    connectedTickInterval = null;
-  }
 }
 
 function attachSyntheticListeners(client: RealtimeClient): void {
@@ -184,6 +191,7 @@ function attachSyntheticListeners(client: RealtimeClient): void {
       next.add(payload.room);
       return next;
     });
+    syncConnected();
   });
 
   detachLiveListener = client.on('live', (payload) => {
@@ -193,10 +201,12 @@ function attachSyntheticListeners(client: RealtimeClient): void {
       next.delete(payload.room);
       return next;
     });
+    syncConnected();
   });
 
   detachConnectErrorListener = client.on('connect_error', (payload) => {
     lastConnectError.set(payload.message);
+    syncConnected();
   });
 }
 
@@ -250,7 +260,6 @@ async function ensureConnected(cluster: Cluster): Promise<void> {
   state.connectionToken++;
   attachSyntheticListeners(client);
   reattachAllWrapperListeners();
-  startConnectedHeartbeat();
   syncConnected();
 
   // Re-subscribe every active room in insertion order. Fire-and-forget —
@@ -283,7 +292,6 @@ function teardown(): void {
 
   detachSyntheticListeners();
   detachAllWrapperListeners();
-  stopConnectedHeartbeat();
 
   if (state.client) {
     try {
