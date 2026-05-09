@@ -15,20 +15,31 @@ export default defineConfig({
     isTest ? svelte() : sveltekit(),
     nodePolyfills({
       include: ['buffer', 'crypto', 'stream', 'util', 'process'],
-      // Buffer: false — disable the Inject pass entirely. @areal/sdk and
-      // @arlex/client already `import { Buffer } from 'buffer'` explicitly,
-      // so an automatic injector is redundant. Vite/Rolldown can't resolve
-      // the inject's `vite-plugin-node-polyfills/shims/buffer` path from
-      // inside transitively-installed deps' node_modules subtrees, which
-      // breaks production builds on Linux runners (the previous
-      // `Buffer: 'build'` value still triggered the inject pass at build
-      // time despite the docstring claim). Same setting as app/.
-      globals: { Buffer: false, global: true, process: true },
+      // Buffer/global/process: false — disable the Inject pass entirely for
+      // all three globals. Polyfills stay importable via `include` for code
+      // that does e.g. `import process from 'process'` explicitly, but the
+      // auto-injector breaks production builds on Linux runners: vite/rollup
+      // cannot resolve the injected `vite-plugin-node-polyfills/shims/{global,
+      // process,buffer}` paths from inside transitively-installed deps'
+      // node_modules subtrees (e.g. engine.io-client beneath @areal/sdk).
+      //
+      // Deps that need a Buffer/process at runtime (sdk realtime client,
+      // socket.io-client/engine.io-client) are pre-bundled below via
+      // `optimizeDeps.include` so vite uses its own polyfill resolution
+      // path rather than the inject pass. Same combination as app/.
+      globals: { Buffer: false, global: false, process: false },
       overrides: { fs: 'empty' }
     })
   ],
   optimizeDeps: {
-    include: ['@solana/web3.js', 'bs58', 'buffer'],
+    include: [
+      '@solana/web3.js',
+      'bs58',
+      'buffer',
+      '@areal/sdk',
+      '@areal/sdk/realtime',
+      'socket.io-client'
+    ],
     // jsdom: ensure web3.js is pre-bundled rather than pulled from `src/*.ts`,
     // which loses the polyfilled curve check and breaks PDA derivation.
     force: process.env.VITEST ? true : undefined,
