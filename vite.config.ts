@@ -15,10 +15,15 @@ export default defineConfig({
     isTest ? svelte() : sveltekit(),
     nodePolyfills({
       include: ['buffer', 'crypto', 'stream', 'util', 'process'],
-      // Buffer: 'build' (not `true`) avoids the Inject pass at build time,
-      // which conflicts with @areal/sdk 0.1.2+ that imports Buffer explicitly
-      // (manualChunks vs external Rollup error on shims/buffer otherwise).
-      globals: { Buffer: 'build', global: true, process: true },
+      // Buffer: false — disable the Inject pass entirely. @areal/sdk and
+      // @arlex/client already `import { Buffer } from 'buffer'` explicitly,
+      // so an automatic injector is redundant. Vite/Rolldown can't resolve
+      // the inject's `vite-plugin-node-polyfills/shims/buffer` path from
+      // inside transitively-installed deps' node_modules subtrees, which
+      // breaks production builds on Linux runners (the previous
+      // `Buffer: 'build'` value still triggered the inject pass at build
+      // time despite the docstring claim). Same setting as app/.
+      globals: { Buffer: false, global: true, process: true },
       overrides: { fs: 'empty' }
     })
   ],
