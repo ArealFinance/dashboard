@@ -196,6 +196,34 @@ describe('realtimeClient.useRoom — grace cancellation', () => {
     await vi.advanceTimersByTimeAsync(15_000);
     expect(__getStateForTests().hasClient).toBe(false);
   });
+
+  it('grace-cancellation re-mount does NOT emit duplicate subscribe (R-G)', async () => {
+    // First mount → first subscribe emit goes out.
+    const a = realtimeClient.useRoom(Rooms.protocol);
+    await flushAsync();
+    expect(allFakeSockets.length).toBe(1);
+    const socket = allFakeSockets[0];
+    const subscribesBefore = socket.emits.filter(
+      (e) => e.channel === 'subscribe' && (e.args[0] as { room: string }).room === 'protocol',
+    ).length;
+    expect(subscribesBefore).toBe(1);
+
+    a.off();
+    // Within grace — re-mount.
+    await vi.advanceTimersByTimeAsync(1_000);
+    const b = realtimeClient.useRoom(Rooms.protocol);
+    await flushAsync();
+
+    // Server-side subscription was never torn down (unsubscribe scheduled
+    // but not emitted yet). Re-mounting must NOT emit a duplicate subscribe.
+    const subscribesAfter = socket.emits.filter(
+      (e) => e.channel === 'subscribe' && (e.args[0] as { room: string }).room === 'protocol',
+    ).length;
+    expect(subscribesAfter).toBe(1);
+
+    b.off();
+    await vi.advanceTimersByTimeAsync(15_000);
+  });
 });
 
 describe('realtimeClient — cluster switch re-subscribes in insertion order', () => {

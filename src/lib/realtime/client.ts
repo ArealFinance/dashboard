@@ -121,9 +121,21 @@ let detachConnectErrorListener: (() => void) | null = null;
  * one to every fresh underlying client (cluster switch, reconnect) so
  * consumers don't need to re-register on every transport flip.
  */
-interface PendingListener<K extends keyof RealtimeEventMap = keyof RealtimeEventMap> {
-  channel: K;
-  listener: (payload: RealtimeEventMap[K]) => void;
+/**
+ * Type-erased pending listener record. The wrapper-set stores entries with
+ * heterogeneous channel/listener generics — at the boundary of `on()` we
+ * cast the consumer's `(payload: RealtimeEventMap[K]) => void` down to the
+ * erased shape (`(payload: unknown) => void`) so the Set can hold them
+ * uniformly. The cast is sound because: (a) the runtime payload type is
+ * dictated by `channel`, not the listener's generic K; (b) the SDK delivers
+ * a payload whose shape is exactly `RealtimeEventMap[channel]`; (c) the
+ * listener is invoked only with that payload, so the consumer's generic
+ * type is honoured at runtime. Replaces the prior `as unknown as` cast.
+ */
+type ErasedListener = (payload: unknown) => void;
+interface PendingListener {
+  channel: keyof RealtimeEventMap;
+  listener: ErasedListener;
   /** Per-attach detach handle from the SDK client. */
   detach: (() => void) | null;
 }
@@ -137,11 +149,17 @@ function attachListenerToCurrentClient(entry: PendingListener): void {
   // payload arrival (replaces the per-second heartbeat poll). Cheap —
   // payload events fire at SDK cadence (30s protocol / 60s pool), not
   // hot-path frequency.
-  const wrapped = (payload: RealtimeEventMap[typeof entry.channel]) => {
+  const wrapped: ErasedListener = (payload) => {
     entry.listener(payload);
     syncConnected();
   };
-  entry.detach = state.client.on(entry.channel, wrapped);
+  // SDK `client.on<K>` expects `(payload: RealtimeEventMap[K]) => void`.
+  // Our erased wrapper accepts `unknown`, which is structurally assignable
+  // to any concrete payload shape; cast at the boundary is type-only.
+  entry.detach = state.client.on(
+    entry.channel,
+    wrapped as Parameters<typeof state.client.on<typeof entry.channel>>[1],
+  );
 }
 
 function detachListenerFromCurrentClient(entry: PendingListener): void {
@@ -371,14 +389,21 @@ export const realtimeClient = {
     state.rooms.set(room, prev + 1);
 
     // Cancel any pending unsubscribe for this room — fast remount race.
+    // We capture whether a pending unsub timer was active BEFORE clearing it:
+    // if `wasGraceCancelled` is true the server-side subscription is still
+    // alive (we hadn't yet emitted unsubscribe), so we MUST NOT re-emit a
+    // duplicate `subscribe` even though `prev === 0` — that would be an
+    // idempotent server no-op, but a wasted roundtrip and a noisy ack log.
+    // Mirrors the discipline in `app/src/lib/realtime/client.svelte.ts`.
     const pending = state.pendingUnsub.get(room);
+    const wasGraceCancelled = pending !== undefined;
     if (pending) {
       clearTimeout(pending);
       state.pendingUnsub.delete(room);
     }
 
     const cluster = get(network);
-    if (prev === 0) {
+    if (prev === 0 && !wasGraceCancelled) {
       // First arrival on this room: ensure socket is up. If a fresh socket
       // is opened by `ensureConnected`, it already re-subscribes every
       // room in `state.rooms` (which now includes this one) — so no extra
@@ -448,16 +473,19 @@ export const realtimeClient = {
   ): () => void {
     if (!browser) return () => {};
 
-    const entry: PendingListener<K> = { channel, listener, detach: null };
-    // The set is keyed by structural identity; the generic relaxation here
-    // is type-only so the heterogeneous queue compiles cleanly.
-    const erased = entry as unknown as PendingListener;
-    wrapperListeners.add(erased);
-    if (state.client) attachListenerToCurrentClient(erased);
+    const entry: PendingListener = {
+      channel,
+      // Erase the consumer generic — runtime invocations always pass the
+      // matching `RealtimeEventMap[channel]` payload, so this is sound.
+      listener: listener as ErasedListener,
+      detach: null,
+    };
+    wrapperListeners.add(entry);
+    if (state.client) attachListenerToCurrentClient(entry);
 
     return () => {
-      detachListenerFromCurrentClient(erased);
-      wrapperListeners.delete(erased);
+      detachListenerFromCurrentClient(entry);
+      wrapperListeners.delete(entry);
     };
   },
 
