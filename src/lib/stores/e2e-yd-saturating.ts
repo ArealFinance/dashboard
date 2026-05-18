@@ -16,7 +16,7 @@
  * values would trigger `MaxClaimBelowClaimed`. The realistic scenario is
  * therefore: Alice claimed 800, we publish a new root where Alice's cumulative
  * is less than 800. To keep max_total_claim >= total_claimed (== 800), we
- * route the difference to ARL Treasury.
+ * route the difference to SPRK Treasury.
  */
 import { get } from 'svelte/store';
 import { Keypair, PublicKey } from '@solana/web3.js';
@@ -284,21 +284,21 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
     const client = get(ydClient);
 
     // Shrink Alice's cumulative BELOW already_claimed — this is the bug class
-    // saturating_sub protects against. Route the deficit to ARL Treasury so
+    // saturating_sub protects against. Route the deficit to SPRK Treasury so
     // that the tree's Σ == max_total_claim == netFunded (contract requires
     // max_total_claim == total_funded at publish time, unchanged here).
     // Alice gets 1/2 of what she already claimed (integer divide).
     const shrunk = ctx.claimedAfterFirstClaim / 2n;
     ctx.shrunkCumulative = shrunk;
-    const arlTreasuryLeafAmt = ctx.netFunded - shrunk;
+    const sprkTreasuryLeafAmt = ctx.netFunded - shrunk;
 
-    // ARL Treasury pubkey — any PublicKey (doesn't need to own anything on-chain
-    // for this scenario; the leaf is never claimed by ARL here).
-    const arlTreasury = Keypair.generate().publicKey;
+    // SPRK Treasury pubkey — any PublicKey (doesn't need to own anything on-chain
+    // for this scenario; the leaf is never claimed by SPRK here).
+    const sprkTreasury = Keypair.generate().publicKey;
 
     const leafAlice = await computeLeaf(deployer.publicKey, shrunk);
-    const leafArl = await computeLeaf(arlTreasury, arlTreasuryLeafAmt);
-    const tree = await buildMerkleTree([leafAlice, leafArl]);
+    const leafSprk = await computeLeaf(sprkTreasury, sprkTreasuryLeafAmt);
+    const tree = await buildMerkleTree([leafAlice, leafSprk]);
 
     const tx = client.buildTransaction('publish_root', {
       accounts: {
@@ -320,7 +320,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
       result: {
         'Alice shrunk cumulative': shrunk.toString(),
         'already_claimed (> new cumulative)': ctx.claimedAfterFirstClaim.toString(),
-        'ARL Treasury leaf': arlTreasuryLeafAmt.toString(),
+        'SPRK Treasury leaf': sprkTreasuryLeafAmt.toString(),
         'epoch': dist.epoch.toString(),
       },
     };
@@ -341,7 +341,7 @@ export const ydSaturatingExecutors: Record<string, StepExecutor> = {
     // NOTE: We re-publish a single-leaf tree (Alice = shrunk) so the proof
     // becomes empty and the claim's `saturating_sub` path is exercised purely.
     // Rebuilding the exact 2-leaf tree from yds-publish-2-shrunk would require
-    // sharing the ARL dummy pubkey via ctx; the single-leaf trick keeps the
+    // sharing the SPRK dummy pubkey via ctx; the single-leaf trick keeps the
     // scenario self-contained and unambiguous.
     const leafAliceShrunk = await computeLeaf(deployer.publicKey, ctx.shrunkCumulative);
     const republishTx = client.buildTransaction('publish_root', {

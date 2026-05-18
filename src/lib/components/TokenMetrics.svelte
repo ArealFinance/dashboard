@@ -1,6 +1,6 @@
 <script lang="ts">
   /*
-   * TokenMetrics — ARL OT supply, RWT supply, RWT NAV, total invested capital.
+   * TokenMetrics — SPRK OT supply, RWT supply, RWT NAV, total invested capital.
    *
    * Reads typed state from `rwtStore` (Layer 3) + `otList` (Layer 1, all
    * deployed OT projects). NAV displayed as raw 6-decimal USDC; invested

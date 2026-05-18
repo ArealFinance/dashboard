@@ -74,7 +74,7 @@ The `/` route renders 8 sections in a single read-only operator dashboard:
    per-bot heartbeats from `BotHeartbeats`).
 2. **AuthorityChain** — POSITIVE + NEGATIVE deployer-zero-authority audit
    verdicts per contract (OT, Futarchy, RWT, DEX, YD).
-3. **TokenMetrics** — RWT / ARL OT / per-OT supply, NAV, treasury balance.
+3. **TokenMetrics** — RWT / SPRK OT / per-OT supply, NAV, treasury balance.
 4. **RevenueFlowOverview** — distribute → convert → publish → claim pipeline
    throughput and last-success timestamps.
 5. **DexPoolsOverview** — pool list, reserves, last shift_bins, last
