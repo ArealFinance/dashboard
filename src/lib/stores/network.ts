@@ -19,9 +19,15 @@ function readLocalnetRpcUrl(): string {
   return 'http://127.0.0.1:8899';
 }
 
+// Helius devnet RPC for Areal devnet (Phase 12.1+). The public
+// `api.devnet.solana.com` aggressively rate-limits the dashboard's
+// `getProgramAccounts` sweep so all devnet reads go through Helius.
+const HELIUS_DEVNET_RPC_URL =
+  'https://devnet.helius-rpc.com/?api-key=4e2f4597-b7dc-4258-9d59-449f4fe3a776';
+
 const RPC_ENDPOINTS: Record<Cluster, string> = {
   'localnet': readLocalnetRpcUrl(),
-  'devnet': 'https://api.devnet.solana.com',
+  'devnet': HELIUS_DEVNET_RPC_URL,
   'mainnet-beta': 'https://api.mainnet-beta.solana.com'
 };
 
